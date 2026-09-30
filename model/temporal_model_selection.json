@@ -1,0 +1,12 @@
+{
+  "recommended_temporal_model": "LSTM",
+  "selection_evidence": "patient-disjoint validation calibration split",
+  "transformer": "Not evaluated: short sequences and 300-patient demo cohort do not justify its capacity.",
+  "deployment_gate": "Adopt only if external validation improves calibrated AUPRC and alert burden over XGBoost.",
+  "sequence_design": {
+    "hours": 6,
+    "channels": "values + missingness mask + time-since",
+    "normalization": "train-only",
+    "padding": "left NaN with mask"
+  }
+}

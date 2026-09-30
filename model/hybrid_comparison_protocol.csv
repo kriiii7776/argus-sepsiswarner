@@ -1,0 +1,8 @@
+System,Evaluation protocol,Evidence status
+SIRS,requires train-fitted score-to-risk map,Not measured: WBC unavailable in fallback cohort
+MEWS,requires train-fitted score-to-risk map,Not measured: SBP/GCS unavailable in fallback cohort
+NEWS/NEWS2,requires train-fitted score-to-risk map,Not measured: SBP/GCS/oxygen unavailable in fallback cohort
+Logistic Regression,read model_selection_decision.json validation metrics,Measured separately
+XGBoost/LightGBM,read model_selection_decision.json validation metrics,Measured separately
+Temporal model,patient-disjoint temporal validation,Measured separately; align split before head-to-head comparison
+Hybrid SepsisGuard,OOF fusion + calibration holdout,Run only after shared-split OOF base predictions exist

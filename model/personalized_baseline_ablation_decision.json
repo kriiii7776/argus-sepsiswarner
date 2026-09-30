@@ -1,0 +1,6 @@
+{
+  "selected_arm": "With personalized features",
+  "selection_split": "validation only",
+  "test_use": "final reporting only after arm selection",
+  "baseline_method": "causal robust median/MAD reference interval"
+}

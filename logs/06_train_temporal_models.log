@@ -1,0 +1,6 @@
+2026-09-29 22:05:14,745 INFO Generating synthetic demo dataset (no processed parquet found).
+2026-09-29 22:05:16,308 INFO   Generated 13299 rows | 427 positive (3.2%) | 300 patients
+2026-09-29 22:08:08,679 INFO Generating synthetic demo dataset (no processed parquet found).
+2026-09-29 22:08:10,172 INFO   Generated 13299 rows | 427 positive (3.2%) | 300 patients
+2026-09-29 22:13:43,654 INFO Generating synthetic demo dataset (no processed parquet found).
+2026-09-29 22:13:45,124 INFO   Generated 13299 rows | 427 positive (3.2%) | 300 patients

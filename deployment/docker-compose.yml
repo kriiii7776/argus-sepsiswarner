@@ -1,0 +1,23 @@
+services:
+  api:
+    build: {context: .., dockerfile: deployment/backend/Dockerfile}
+    ports: ["8000:8000"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://sepsisguard:sepsisguard@postgres:5432/sepsisguard
+      LOG_LEVEL: INFO
+    depends_on: [postgres]
+  dashboard:
+    build: {context: .., dockerfile: deployment/frontend/Dockerfile}
+    ports: ["5173:5173"]
+    environment: [VITE_API_URL=http://localhost:8000]
+    depends_on: [api]
+  postgres:
+    image: postgres:16-alpine
+    environment: [POSTGRES_DB=sepsisguard, POSTGRES_USER=sepsisguard, POSTGRES_PASSWORD=sepsisguard]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-sepsisguard-schema.sql:ro
+  redis:
+    image: redis:7-alpine
+    profiles: [scaled]
+volumes: {postgres_data: {}}

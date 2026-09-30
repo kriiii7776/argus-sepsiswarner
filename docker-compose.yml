@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: sepsisguard_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sepsis_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sepsis_password}
+      POSTGRES_DB: ${POSTGRES_DB:-sepsis_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sepsis_user} -d ${POSTGRES_DB:-sepsis_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sepsisguard_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  inference:
+    build:
+      context: ./src/inference
+      dockerfile: Dockerfile
+    container_name: sepsisguard_inference
+    environment:
+      - MODEL_PATH=/app/models/production_model.pkl
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./model:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: sepsisguard_backend
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-sepsis_user}:${POSTGRES_PASSWORD:-sepsis_password}@db:5432/${POSTGRES_DB:-sepsis_db}
+      - REDIS_URL=redis://redis:6379/0
+      - INFERENCE_API_URL=http://inference:8001
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      inference:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+    container_name: sepsisguard_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
