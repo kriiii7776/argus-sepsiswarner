@@ -1,0 +1,91 @@
+/* ARGUS Design System Tokens (Phase 7A) */
+:root {
+  /* Color Palette - Clinical Slate Light Main Content + Dark Sidebar */
+  --bg-sidebar: #0f172a;
+  --bg-sidebar-hover: #1e293b;
+  --bg-sidebar-active: #334155;
+  --border-sidebar: #1e293b;
+
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --bg-hover: #f8fafc;
+  
+  --border-color: #e2e8f0;
+  --border-light: #cbd5e1;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-on-dark: #f8fafc;
+
+  /* Severity Colors */
+  --color-critical: #dc2626;  /* RED URGENT */
+  --color-critical-bg: #fef2f2;
+  --color-critical-border: #fecaca;
+
+  --color-review: #ea580c;    /* ORANGE REVIEW */
+  --color-review-bg: #fff7ed;
+  --color-review-border: #ffedd5;
+
+  --color-watch: #d97706;     /* YELLOW WATCH */
+  --color-watch-bg: #fffbeb;
+  --color-watch-border: #fef3c7;
+
+  --color-stable: #16a34a;    /* STABLE / LOW */
+  --color-stable-bg: #f0fdf4;
+  --color-stable-border: #bbf7d0;
+
+  --color-info: #0284c7;      /* INFO / ACCENT */
+  --color-info-bg: #f0f9ff;
+  --color-info-border: #bae6fd;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-subtle);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: var(--radius-full);
+}
