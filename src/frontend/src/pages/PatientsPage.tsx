@@ -1,24 +1,135 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PatientRosterTable } from '../components/patients/PatientRosterTable';
-import { MOCK_PATIENTS, MOCK_CURRENT_VITALS } from '../mocks/mockData';
-import { Search, Users } from 'lucide-react';
-
+import { api } from '../services/api';
+import type { Patient, VitalEvent } from '../types';
+import { LoadingState, ErrorState, EmptyState } from '../components/common/FeedbackStates';
+import { Search, Users, RefreshCw } from 'lucide-react';
 
 interface Props {
   onSelectPatient: (patient_id: string) => void;
 }
 
+const MONITORED_PATIENT_IDS = ['P-ICU-001', 'P-ICU-002', 'P-ICU-003', 'P-ICU-004', 'P-ICU-005'];
+
 export const PatientsPage: React.FC<Props> = ({ onSelectPatient }) => {
   const [filter, setFilter] = useState<'ALL' | 'CRITICAL' | 'WARNING' | 'STABLE'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
-  const filteredPatients = MOCK_PATIENTS.filter(p => {
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [vitalsMap, setVitalsMap] = useState<Record<string, VitalEvent>>({});
+
+  useEffect(() => {
+    let isSubscribed = true;
+    setError(null);
+
+    async function fetchRoster() {
+      try {
+        const patientPromises = MONITORED_PATIENT_IDS.map(async (id) => {
+          try {
+            const [p, riskRes, vitalsRes] = await Promise.allSettled([
+              api.getPatient(id),
+              api.getRisk(id),
+              api.getVitals(id)
+            ]);
+
+            const patientObj: Patient = p.status === 'fulfilled' ? p.value : {
+              patient_id: id,
+              name: `Patient ${id}`,
+              bed: `Bed ${id.slice(-3)}`,
+              age: 50,
+              source_system: 'local',
+              admitted_at: new Date().toISOString(),
+              current_risk_score: 0,
+              risk_level: 'STABLE',
+              risk_trend: 'stable'
+            };
+
+            if (riskRes.status === 'fulfilled') {
+              const score = riskRes.value.risk_score <= 1.0 ? riskRes.value.risk_score * 100 : riskRes.value.risk_score;
+              patientObj.current_risk_score = score;
+              if (score >= 80) patientObj.risk_level = 'CRITICAL';
+              else if (score >= 50) patientObj.risk_level = 'WARNING';
+              else if (score >= 30) patientObj.risk_level = 'STABLE';
+              else patientObj.risk_level = 'LOW';
+            }
+
+            let latestVital: VitalEvent | null = null;
+            if (vitalsRes.status === 'fulfilled' && vitalsRes.value.length > 0) {
+              latestVital = vitalsRes.value[0];
+            }
+
+            return { patientObj, latestVital };
+          } catch (e) {
+            console.error(`Error fetching patient ${id}:`, e);
+            return null;
+          }
+        });
+
+        const results = await Promise.all(patientPromises);
+        if (!isSubscribed) return;
+
+        const validPatients: Patient[] = [];
+        const vMap: Record<string, VitalEvent> = {};
+
+        results.forEach(res => {
+          if (res) {
+            validPatients.push(res.patientObj);
+            if (res.latestVital) {
+              vMap[res.patientObj.patient_id] = res.latestVital;
+            }
+          }
+        });
+
+        setPatients(validPatients);
+        setVitalsMap(vMap);
+      } catch (err: any) {
+        if (isSubscribed) {
+          console.error('Failed to fetch ICU patient roster:', err);
+          setError(err.message || 'Failed to communicate with backend REST API.');
+        }
+      } finally {
+        if (isSubscribed) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchRoster();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [refreshTrigger]);
+
+  const handleRefresh = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  const filteredPatients = patients.filter(p => {
     const matchesFilter = filter === 'ALL' || p.risk_level === filter;
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           p.bed.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           p.patient_id.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesFilter && matchesSearch;
   });
+
+  if (loading) {
+    return <LoadingState message="Fetching live ICU patient roster from backend REST API..." />;
+  }
+
+  if (error) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <ErrorState title="Patient Directory REST Error" message={error} />
+        <button className="btn btn-outline" onClick={handleRefresh} style={{ width: 'fit-content' }}>
+          <RefreshCw size={14} /> Retry Request
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -29,6 +140,14 @@ export const PatientsPage: React.FC<Props> = ({ onSelectPatient }) => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <button 
+            className="btn btn-outline"
+            onClick={handleRefresh}
+            style={{ padding: '0.4rem 0.65rem', fontSize: '0.8rem' }}
+          >
+            <RefreshCw size={14} /> Refresh
+          </button>
+
           {/* Search */}
           <div style={{ position: 'relative', width: '260px' }}>
             <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -65,12 +184,16 @@ export const PatientsPage: React.FC<Props> = ({ onSelectPatient }) => {
       </div>
 
       <div className="card">
-        <PatientRosterTable
-          patients={filteredPatients}
-          vitalsMap={MOCK_CURRENT_VITALS}
-          activePatientId=""
-          onSelectPatient={onSelectPatient}
-        />
+        {filteredPatients.length > 0 ? (
+          <PatientRosterTable
+            patients={filteredPatients}
+            vitalsMap={vitalsMap}
+            activePatientId=""
+            onSelectPatient={onSelectPatient}
+          />
+        ) : (
+          <EmptyState message="No Matching Patients" subtext="No ICU patient records match the selected filter criteria." />
+        )}
       </div>
     </div>
   );

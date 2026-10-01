@@ -1,7 +1,6 @@
 import React from 'react';
 import type { AlertItem } from '../../types';
 import { AlertBadge } from '../common/Badge';
-
 import { ShieldAlert, ArrowRight } from 'lucide-react';
 
 interface Props {
@@ -10,11 +9,23 @@ interface Props {
 }
 
 export const AlertCard: React.FC<Props> = ({ alert, onSelectPatient }) => {
+  const borderHex = alert.severity === 'RED_URGENT' 
+    ? 'var(--color-critical)' 
+    : alert.severity === 'ORANGE_REVIEW' 
+      ? 'var(--color-review)' 
+      : 'var(--color-watch)';
+
+  const formattedTime = alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent';
+
   return (
-    <div className="card" style={{ borderLeft: `4px solid ${alert.severity === 'RED_URGENT' ? 'var(--color-critical)' : alert.severity === 'ORANGE_REVIEW' ? 'var(--color-review)' : 'var(--color-watch)'}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <article 
+      className="card" 
+      style={{ borderLeft: `4px solid ${borderHex}` }}
+      aria-label={`Clinical Alert ${alert.severity} for ${alert.patient_name}`}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <ShieldAlert size={18} style={{ color: alert.severity === 'RED_URGENT' ? 'var(--color-critical)' : 'var(--color-review)' }} />
+          <ShieldAlert size={18} style={{ color: borderHex }} aria-hidden="true" />
           <strong style={{ fontSize: '0.95rem' }}>{alert.bed} — {alert.patient_name}</strong>
         </div>
         <AlertBadge severity={alert.severity} />
@@ -29,17 +40,18 @@ export const AlertCard: React.FC<Props> = ({ alert, onSelectPatient }) => {
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-        <span>Triggered: {new Date(alert.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        <span>Triggered: {formattedTime}</span>
         {onSelectPatient && (
           <button 
             className="btn btn-outline" 
             onClick={() => onSelectPatient(alert.patient_id)}
             style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+            aria-label={`Focus patient ${alert.patient_name}`}
           >
-            View Patient Focus <ArrowRight size={12} />
+            View Patient Focus <ArrowRight size={12} aria-hidden="true" />
           </button>
         )}
       </div>
-    </div>
+    </article>
   );
 };

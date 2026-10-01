@@ -12,13 +12,16 @@ import { ConnectionStatus } from '../common/ConnectionStatus';
 import type { ConnectionStatus as ConnectionStatusType } from '../../types';
 
 
+import type { ConnectionLifecycleState } from '../../services/websocket';
+
 interface SidebarProps {
   currentTab: string;
   onNavigate: (tab: string) => void;
   status: ConnectionStatusType;
+  wsState?: ConnectionLifecycleState;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onNavigate, status }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onNavigate, status, wsState }) => {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
     { id: 'patients', label: 'Patients Roster', icon: <Users size={18} /> },
@@ -55,7 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onNavigate, status
         <div style={{ marginBottom: '0.75rem', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em' }}>
           System Connection Status
         </div>
-        <ConnectionStatus status={status} />
+        <ConnectionStatus status={status} wsState={wsState} />
       </div>
     </aside>
   );

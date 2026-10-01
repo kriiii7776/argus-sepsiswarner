@@ -45,20 +45,24 @@ export interface VitalEvent {
 
 export interface ShapAttribution {
   feature_name: string;
-  feature_value: number;
+  feature_value?: number;
   shap_value: number;
-  description: string;
+  direction?: 'positive' | 'negative';
+  magnitude?: number;
+  description?: string;
 }
 
 export interface ShapExplanation {
   explanation_available: boolean;
   base_value?: number;
   feature_attributions: ShapAttribution[];
+  summary?: string;
+  disclaimer?: string;
 }
 
 export interface UncertaintySummary {
   uncertainty_available: boolean;
-  method: 'UNAVAILABLE' | 'CONFORMAL';
+  method: 'UNAVAILABLE' | 'CONFORMAL' | string;
   reason: string;
   interval_lower?: number | null;
   interval_upper?: number | null;

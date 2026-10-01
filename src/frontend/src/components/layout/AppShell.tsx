@@ -4,11 +4,14 @@ import { Header } from './Header';
 import type { ConnectionStatus } from '../../types';
 
 
+import type { ConnectionLifecycleState } from '../../services/websocket';
+
 interface AppShellProps {
   children: React.ReactNode;
   currentTab: string;
   onNavigate: (tab: string) => void;
   status: ConnectionStatus;
+  wsState?: ConnectionLifecycleState;
   activePatientName?: string;
   activeBed?: string;
 }
@@ -18,6 +21,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   currentTab,
   onNavigate,
   status,
+  wsState,
   activePatientName,
   activeBed
 }) => {
@@ -35,7 +39,7 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   return (
     <div className="app-shell">
-      <Sidebar currentTab={currentTab} onNavigate={onNavigate} status={status} />
+      <Sidebar currentTab={currentTab} onNavigate={onNavigate} status={status} wsState={wsState} />
       <main className="app-main">
         <Header 
           title={getTabTitle()} 
