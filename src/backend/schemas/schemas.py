@@ -48,6 +48,7 @@ class Explanation(BaseModel):
 # ---------------------------------------------------------------------------
 class VitalEvent(BaseModel):
     patient_id: str = Field(min_length=1, max_length=64)
+    session_id: str | None = Field(default=None, min_length=1, max_length=128)
     timestamp: datetime
     heart_rate: float | None = Field(default=None, ge=0, le=400)
     map: float | None = Field(default=None, ge=0, le=300)
@@ -76,6 +77,7 @@ class VitalEvent(BaseModel):
 
 class PredictionResponse(BaseModel):
     patient_id: str
+    session_id: str | None = None
     prediction_timestamp: datetime
     prediction_horizon_hours: int = 6
     risk_probability: float
@@ -147,3 +149,70 @@ class ModelVersionResponse(BaseModel):
     model_version: str
     is_demo_model: bool
     prediction_horizon_hours: int = 6
+
+# ---------------------------------------------------------------------------
+# Track B Response & Request Schemas
+# ---------------------------------------------------------------------------
+class StaffUserResponse(BaseModel):
+    user_id: str
+    name: str
+    role: str
+    assigned_unit: str
+    active: bool
+
+class StaffUserCreate(BaseModel):
+    user_id: str
+    name: str
+    role: str = 'NURSE'
+    assigned_unit: str = 'ICU-A'
+
+class PatientAssignmentRequest(BaseModel):
+    patient_id: str
+    user_id: str
+
+class DeviceRegisterRequest(BaseModel):
+    device_id: str
+    user_id: str
+    platform: str = 'android'
+    push_token: Optional[str] = None
+
+class AlertAcknowledgeRequest(BaseModel):
+    user_id: str
+
+class AlertAckResponse(BaseModel):
+    alert_id: str
+    patient_id: str
+    user_id: Optional[str] = None
+    severity: str
+    status: str
+    acknowledged_at: Optional[datetime] = None
+
+class IcuOverviewResponse(BaseModel):
+    total_patients: int
+    active_patients: int
+    watch_count: int
+    review_count: int
+    urgent_count: int
+    recent_emergency_alerts: list[dict] = []
+
+class LoginRequest(BaseModel):
+    username: str
+    password: Optional[str] = None
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: str
+    name: str
+    role: str
+    assigned_unit: str
+    assigned_patients: list[str] = []
+
+class NotificationPreferences(BaseModel):
+    clinical_notifications: bool = True
+    urgent_alerts: bool = True
+    review_alerts: bool = True
+    watch_alerts: bool = True
+    sound_enabled: bool = True
+    vibration_enabled: bool = True
+

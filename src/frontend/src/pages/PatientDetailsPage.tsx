@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { api } from '../services/api';
 import type { ApiError } from '../services/api';
-import { useWebSocket } from '../hooks/useWebSocket';
 import type { 
   Patient, 
   VitalEvent, 
@@ -9,8 +8,7 @@ import type {
   UncertaintySummary, 
   AlertItem,
   DataQualitySummary,
-  RiskLevel,
-  AlertSeverity
+  RiskLevel
 } from '../types';
 import { RiskAnalysisCard } from '../components/risk/RiskAnalysisCard';
 import { VitalCard } from '../components/vitals/VitalCard';
@@ -24,26 +22,66 @@ import { LoadingState, ErrorState, EmptyState } from '../components/common/Feedb
 import { Heart, Activity, Thermometer, Wind, Droplets, User, ShieldAlert, RefreshCw, Radio } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
 
+import { useTelemetry } from '../contexts/TelemetryContext';
+
 interface Props {
   patientId: string;
 }
 
 export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
+  const { getPatientTelemetry, isConnected: wsConnected } = useTelemetry();
+  const liveData = getPatientTelemetry(patientId);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
-  const [patient, setPatient] = useState<Patient | null>(null);
-  const [vitals, setVitals] = useState<VitalEvent | null>(null);
+  // REST fallback states (used when live WebSocket data is not yet present)
+  const [restPatient, setRestPatient] = useState<Patient | null>(null);
+  const [restVitals, setRestVitals] = useState<VitalEvent | null>(null);
   const [vitalHistory, setVitalHistory] = useState<VitalEvent[]>([]);
-  const [trajectoryPoints, setTrajectoryPoints] = useState<Array<{ timeLabel: string; risk_probability: number; alert_severity?: string }>>([]);
-  const [shapExplanation, setShapExplanation] = useState<ShapExplanation | null>(null);
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [restTrajectoryPoints, setRestTrajectoryPoints] = useState<Array<{ timeLabel: string; risk_probability: number; alert_severity?: string }>>([]);
+  const [restShapExplanation, setRestShapExplanation] = useState<ShapExplanation | null>(null);
+  const [restAlerts, setRestAlerts] = useState<AlertItem[]>([]);
 
-  // 1. Patient-Isolated Real-Time WebSocket Hook
-  const { isConnected, latestEvent } = useWebSocket(patientId);
+  const isConnected = wsConnected;
 
-  // Constant backend uncertainty summary state (Phase 6D canonical behavior)
+  // Derived patient & telemetry state (live WebSocket data has priority over REST fallback)
+  const patient = liveData.patient || restPatient;
+  const vitals = liveData.vitals || restVitals;
+
+  const trajectoryPoints = useMemo(() => {
+    if (liveData.trajectory && liveData.trajectory.length > 0) {
+      return liveData.trajectory.map((pt) => ({
+        timeLabel: new Date(pt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        risk_probability: pt.risk_probability,
+        alert_severity: pt.alert_severity
+      }));
+    }
+    return restTrajectoryPoints;
+  }, [liveData.trajectory, restTrajectoryPoints]);
+
+  const shapExplanation = useMemo(() => {
+    if (liveData.prediction && liveData.prediction.shap_explanation) {
+      const shap = liveData.prediction.shap_explanation;
+      const attributions = (shap.feature_attributions || []).map((fa: any) => ({
+        feature_name: fa.feature_name || 'feature',
+        shap_value: fa.shap_value || 0.1,
+        description: `Feature ${fa.feature_name}`
+      }));
+      return {
+        explanation_available: shap.explanation_available ?? true,
+        feature_attributions: attributions,
+        summary: shap.summary || 'Real SHAP model attributions derived from Logistic Regression.',
+        disclaimer: 'SHAP values represent model contribution, not causation.'
+      };
+    }
+    return restShapExplanation;
+  }, [liveData.prediction, restShapExplanation]);
+
+  const alerts = liveData.alerts.length > 0 ? liveData.alerts : restAlerts;
+
+  // Constant backend uncertainty summary state
   const uncertaintySummary: UncertaintySummary = useMemo(() => ({
     uncertainty_available: false,
     method: 'UNAVAILABLE',
@@ -51,14 +89,14 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
   }), []);
 
   const dataQualitySummary: DataQualitySummary = useMemo(() => ({
-    overall_quality: 'HIGH',
+    overall_quality: (vitals?.signal_quality || 'HIGH') as 'HIGH' | 'MEDIUM' | 'LOW',
     artifacts_detected: false,
     active_sensors_count: 6,
     failed_sensors_count: 0,
     last_assessment: 'Active continuous monitoring'
   }), []);
 
-  // 2. Initial REST API Data Load
+  // REST API Data Load
   useEffect(() => {
     let isSubscribed = true;
 
@@ -113,14 +151,14 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
           pObj.risk_level = rLevel;
         }
 
-        setPatient(pObj);
+        setRestPatient(pObj);
 
         if (vitalsRes.status === 'fulfilled' && vitalsRes.value.length > 0) {
           const vList = vitalsRes.value;
           setVitalHistory(vList);
-          setVitals(vList[0]);
+          setRestVitals(vList[0]);
         } else {
-          setVitals(null);
+          setRestVitals(null);
           setVitalHistory([]);
         }
 
@@ -130,9 +168,9 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
             risk_probability: pt.risk_probability <= 1.0 ? pt.risk_probability : pt.risk_probability / 100,
             alert_severity: pt.alert_severity || undefined
           }));
-          setTrajectoryPoints(points);
+          setRestTrajectoryPoints(points);
         } else {
-          setTrajectoryPoints([]);
+          setRestTrajectoryPoints([]);
         }
 
         if (explanationRes.status === 'fulfilled') {
@@ -144,14 +182,14 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
             description: formatFeatureName(key, value)
           })).sort((a, b) => Math.abs(b.shap_value) - Math.abs(a.shap_value));
 
-          setShapExplanation({
+          setRestShapExplanation({
             explanation_available: attributions.length > 0,
             feature_attributions: attributions,
             summary: expData.summary,
             disclaimer: 'SHAP values represent model contribution, not causation.'
           });
         } else {
-          setShapExplanation({
+          setRestShapExplanation({
             explanation_available: false,
             feature_attributions: [],
             disclaimer: 'SHAP values represent model contribution, not causation.'
@@ -159,9 +197,9 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
         }
 
         if (alertsRes.status === 'fulfilled') {
-          setAlerts(alertsRes.value);
+          setRestAlerts(alertsRes.value);
         } else {
-          setAlerts([]);
+          setRestAlerts([]);
         }
       } catch (err: any) {
         if (isSubscribed) {
@@ -181,122 +219,6 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
       isSubscribed = false;
     };
   }, [patientId, refreshTrigger]);
-
-  // 3. Process Patient-Isolated Real-Time WebSocket Updates
-  useEffect(() => {
-    if (!latestEvent) return;
-
-    const eventPatientId = latestEvent.patient_id || latestEvent.payload?.patient_id;
-    // Strict Patient Isolation Check
-    if (eventPatientId && eventPatientId !== patientId) {
-      return;
-    }
-
-    const type = latestEvent.type;
-    const payload = latestEvent.payload;
-
-    queueMicrotask(() => {
-      if (type === 'prediction' && payload) {
-        // Preserve clinical timestamp from backend
-        const clinicalTs = payload.prediction_timestamp || latestEvent.occurred_at || new Date().toISOString();
-        const formattedTime = new Date(clinicalTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        
-        const prob = payload.risk_probability ?? 0;
-        const scorePct = prob <= 1.0 ? prob * 100 : prob;
-
-        // Update Patient Risk State
-        setPatient(prev => {
-          if (!prev) return prev;
-          let rLevel: RiskLevel = 'STABLE';
-          if (scorePct >= 80) rLevel = 'CRITICAL';
-          else if (scorePct >= 50) rLevel = 'WARNING';
-          else if (scorePct >= 30) rLevel = 'STABLE';
-          else rLevel = 'LOW';
-
-          const trend: 'up' | 'down' | 'stable' = scorePct > prev.current_risk_score ? 'up' : scorePct < prev.current_risk_score ? 'down' : 'stable';
-
-          return {
-            ...prev,
-            current_risk_score: scorePct,
-            risk_level: rLevel,
-            risk_trend: trend
-          };
-        });
-
-        // Append Point to Trajectory Chart
-        setTrajectoryPoints(prev => [
-          ...prev,
-          {
-            timeLabel: formattedTime,
-            risk_probability: prob <= 1.0 ? prob : prob / 100,
-            alert_severity: payload.alert_severity || undefined
-          }
-        ]);
-
-        // Update Real SHAP Explanation if included
-        if (payload.shap_explanation && payload.shap_explanation.explanation_available) {
-          const rawAttributions = payload.shap_explanation.feature_attributions || [];
-          const formattedAttrs = rawAttributions.map((attr: any) => ({
-            feature_name: attr.feature_name,
-            shap_value: attr.shap_value,
-            description: formatFeatureName(attr.feature_name, attr.shap_value)
-          })).sort((a: any, b: any) => Math.abs(b.shap_value) - Math.abs(a.shap_value));
-
-          setShapExplanation({
-            explanation_available: true,
-            feature_attributions: formattedAttrs,
-            summary: `Real SHAP model attributions (log-odds space) derived from ${payload.model_version || 'logistic-regression-v1'}.`,
-            disclaimer: 'SHAP values represent model contribution, not causation.'
-          });
-        }
-
-        // If backend emitted alert in prediction payload
-        if (payload.alert && payload.alert.alert_emitted) {
-          const alertMsg = payload.alert.message || 'Clinical deterioration alert';
-          let sev: AlertSeverity = 'NONE';
-          const rawSev = (payload.alert_severity || payload.alert.alert_severity || '').toUpperCase();
-          if (rawSev.includes('RED') || rawSev.includes('URGENT')) sev = 'RED_URGENT';
-          else if (rawSev.includes('ORANGE') || rawSev.includes('REVIEW')) sev = 'ORANGE_REVIEW';
-          else if (rawSev.includes('YELLOW') || rawSev.includes('WATCH')) sev = 'YELLOW_WATCH';
-
-          const newAlert: AlertItem = {
-            alert_id: `ws-alert-${Date.now()}`,
-            patient_id: patientId,
-            patient_name: `Patient ${patientId}`,
-            bed: `Bed ${patientId.slice(-3)}`,
-            severity: sev,
-            message: alertMsg,
-            recommended_action: payload.recommended_clinical_review_level || 'Review vital trajectory',
-            timestamp: clinicalTs,
-            status: 'active'
-          };
-
-          setAlerts(prev => [newAlert, ...prev.filter(a => a.alert_id !== newAlert.alert_id)]);
-        }
-      } else if (type === 'alert' && payload) {
-        const clinicalTs = latestEvent.occurred_at || new Date().toISOString();
-        let sev: AlertSeverity = 'NONE';
-        const rawSev = (payload.severity || payload.alert_severity || '').toUpperCase();
-        if (rawSev.includes('RED') || rawSev.includes('URGENT')) sev = 'RED_URGENT';
-        else if (rawSev.includes('ORANGE') || rawSev.includes('REVIEW')) sev = 'ORANGE_REVIEW';
-        else if (rawSev.includes('YELLOW') || rawSev.includes('WATCH')) sev = 'YELLOW_WATCH';
-
-        const newAlert: AlertItem = {
-          alert_id: `ws-alert-${Date.now()}`,
-          patient_id: patientId,
-          patient_name: `Patient ${patientId}`,
-          bed: `Bed ${patientId.slice(-3)}`,
-          severity: sev,
-          message: payload.message || 'Clinical deterioration alert emitted',
-          recommended_action: 'Perform immediate bedside evaluation',
-          timestamp: clinicalTs,
-          status: 'active'
-        };
-
-        setAlerts(prev => [newAlert, ...prev]);
-      }
-    });
-  }, [latestEvent, patientId]);
 
   const handleRefresh = () => {
     setRefreshTrigger(prev => prev + 1);

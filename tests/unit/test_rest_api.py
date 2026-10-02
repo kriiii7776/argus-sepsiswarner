@@ -214,3 +214,23 @@ def test_20_no_active_rest_endpoint_depends_on_legacy_deployment_backend():
     # Verify that deployment.backend is not loaded in sys.modules by src.backend
     for mod in list(sys.modules.keys()):
         assert not mod.startswith("deployment.backend"), f"Legacy module loaded: {mod}"
+
+def test_21_argus_auth_token_lifecycle_validation():
+    # 1. Login generates canonical argus-auth-* token
+    login_res = client.post("/api/v1/auth/login", json={"username": "user-001", "password": "any"})
+    assert login_res.status_code == 200
+    token = login_res.json()["access_token"]
+    assert token.startswith("argus-auth-")
+
+    # 2. Valid token succeeds with 200 OK
+    valid_res = client.get("/api/v1/patients/PATIENT-001", headers={"Authorization": f"Bearer {token}"})
+    assert valid_res.status_code == 200
+
+    # 3. Missing token fails with 401
+    no_token_res = client.get("/api/v1/patients/PATIENT-001")
+    assert no_token_res.status_code == 401
+
+    # 4. Invalid token fails with 401
+    bad_token_res = client.get("/api/v1/patients/PATIENT-001", headers={"Authorization": "Bearer invalid-token"})
+    assert bad_token_res.status_code == 401
+

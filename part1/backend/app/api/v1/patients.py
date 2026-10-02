@@ -82,5 +82,5 @@ async def get_clinical_context(patient_id: str, simulation_time: Optional[dateti
         )
     as_of_time = simulation_time or clock.simulation_time
     return clinical_context_service.as_of(
-        patient_id, patient.session_id, as_of_time, clock.elapsed_sim_seconds, simulation_service.scenario_engine.scenario_name
+        patient_id, patient.session_id, as_of_time, clock.elapsed_sim_seconds, simulation_service.get_scenario_engine(patient_id).scenario_name
     )

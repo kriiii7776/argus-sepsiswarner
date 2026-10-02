@@ -32,6 +32,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       case 'patient-details': return 'Patient Intensive Monitoring & Explainability';
       case 'alerts': return 'Clinical Alert Center';
       case 'analytics': return 'ICU Analytics & Trends';
+      case 'admin': return 'System Administrative & Command Console';
       case 'settings': return 'System Settings & Integration';
       default: return 'ARGUS SepsisGuard';
     }

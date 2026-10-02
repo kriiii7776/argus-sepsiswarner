@@ -2,25 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { AlertCard } from '../components/alerts/AlertCard';
 import { LoadingState, ErrorState, EmptyState } from '../components/common/FeedbackStates';
 import { api } from '../services/api';
-import { useWebSocket } from '../hooks/useWebSocket';
-import type { AlertItem, AlertSeverity } from '../types';
+import type { AlertItem } from '../types';
 import { ShieldAlert, RefreshCw, Radio } from 'lucide-react';
+
+import { useTelemetry } from '../contexts/TelemetryContext';
 
 interface Props {
   onSelectPatient: (patient_id: string) => void;
 }
 
-const MONITORED_PATIENT_IDS = ['P-ICU-001', 'P-ICU-002', 'P-ICU-003', 'P-ICU-004', 'P-ICU-005'];
+const MONITORED_PATIENT_IDS = ['PATIENT-001', 'PATIENT-002', 'PATIENT-003', 'PATIENT-004'];
 
 export const AlertsPage: React.FC<Props> = ({ onSelectPatient }) => {
+  const { activeAlerts: contextAlerts, isConnected } = useTelemetry();
   const [filterSeverity, setFilterSeverity] = useState<string>('ALL');
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [alerts, setAlerts] = useState<AlertItem[]>(contextAlerts);
 
-  // Global WebSocket Stream Hook
-  const { isConnected, latestEvent } = useWebSocket();
+  useEffect(() => {
+    if (contextAlerts && contextAlerts.length > 0) {
+      setAlerts(contextAlerts);
+    }
+  }, [contextAlerts]);
 
   useEffect(() => {
     let isSubscribed = true;
@@ -30,7 +35,10 @@ export const AlertsPage: React.FC<Props> = ({ onSelectPatient }) => {
         if (isSubscribed) {
           setError(null);
         }
-        const alertPromises = MONITORED_PATIENT_IDS.map(id => api.getAlerts(id).catch(err => {
+        const patientIds = Array.from(
+          new Set([...MONITORED_PATIENT_IDS, ...contextAlerts.map(a => a.patient_id)])
+        );
+        const alertPromises = patientIds.map(id => api.getAlerts(id).catch(err => {
           console.warn(`Failed to fetch alerts for ${id}:`, err);
           return [] as AlertItem[];
         }));
@@ -39,7 +47,15 @@ export const AlertsPage: React.FC<Props> = ({ onSelectPatient }) => {
         if (!isSubscribed) return;
 
         const combined = results.flat();
-        setAlerts(combined);
+        setAlerts(prev => {
+          const map: Record<string, AlertItem> = {};
+          // Keep the latest active alert per patient
+          [...prev, ...combined].forEach(a => {
+            const key = a.patient_id || a.alert_id;
+            map[key] = a;
+          });
+          return Object.values(map);
+        });
       } catch (err: any) {
         if (isSubscribed) {
           console.error('Failed to fetch REST alerts:', err);
@@ -58,59 +74,6 @@ export const AlertsPage: React.FC<Props> = ({ onSelectPatient }) => {
       isSubscribed = false;
     };
   }, [refreshTrigger]);
-
-  // Handle Real-Time WebSocket Alerts from SmartAlertEngine
-  useEffect(() => {
-    if (!latestEvent) return;
-
-    const type = latestEvent.type;
-    const payload = latestEvent.payload;
-    const patientId = latestEvent.patient_id || payload?.patient_id || 'P-UNKNOWN';
-
-    queueMicrotask(() => {
-      if (type === 'alert' && payload) {
-        let sev: AlertSeverity = 'NONE';
-        const rawSev = (payload.severity || payload.alert_severity || '').toUpperCase();
-        if (rawSev.includes('RED') || rawSev.includes('URGENT')) sev = 'RED_URGENT';
-        else if (rawSev.includes('ORANGE') || rawSev.includes('REVIEW')) sev = 'ORANGE_REVIEW';
-        else if (rawSev.includes('YELLOW') || rawSev.includes('WATCH')) sev = 'YELLOW_WATCH';
-
-        const newAlert: AlertItem = {
-          alert_id: `ws-alert-${Date.now()}`,
-          patient_id: patientId,
-          patient_name: `Patient ${patientId}`,
-          bed: `Bed ${patientId.slice(-3)}`,
-          severity: sev,
-          message: payload.message || 'Clinical deterioration alert emitted',
-          recommended_action: 'Bedside clinical review',
-          timestamp: latestEvent.occurred_at || new Date().toISOString(),
-          status: 'active'
-        };
-
-        setAlerts(prev => [newAlert, ...prev.filter(a => a.alert_id !== newAlert.alert_id)]);
-      } else if (type === 'prediction' && payload && payload.alert && payload.alert.alert_emitted) {
-        let sev: AlertSeverity = 'NONE';
-        const rawSev = (payload.alert_severity || payload.alert.alert_severity || '').toUpperCase();
-        if (rawSev.includes('RED') || rawSev.includes('URGENT')) sev = 'RED_URGENT';
-        else if (rawSev.includes('ORANGE') || rawSev.includes('REVIEW')) sev = 'ORANGE_REVIEW';
-        else if (rawSev.includes('YELLOW') || rawSev.includes('WATCH')) sev = 'YELLOW_WATCH';
-
-        const newAlert: AlertItem = {
-          alert_id: `ws-alert-${Date.now()}`,
-          patient_id: patientId,
-          patient_name: `Patient ${patientId}`,
-          bed: `Bed ${patientId.slice(-3)}`,
-          severity: sev,
-          message: payload.alert.message || 'Clinical deterioration alert emitted',
-          recommended_action: payload.recommended_clinical_review_level || 'Bedside evaluation',
-          timestamp: payload.prediction_timestamp || latestEvent.occurred_at || new Date().toISOString(),
-          status: 'active'
-        };
-
-        setAlerts(prev => [newAlert, ...prev.filter(a => a.alert_id !== newAlert.alert_id)]);
-      }
-    });
-  }, [latestEvent]);
 
   const handleRefresh = () => {
     setRefreshTrigger(prev => prev + 1);

@@ -39,6 +39,7 @@ def test_part1_adapter_transformation():
 
     assert isinstance(event, VitalEvent)
     assert event.patient_id == "P-ICU-001"
+    assert event.session_id == "sess-test-01"
     # Verify simulation_time was mapped to clinical timestamp
     assert event.timestamp.year == 2026
     assert event.timestamp.month == 10

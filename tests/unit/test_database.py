@@ -83,6 +83,31 @@ async def test_06_prediction_persistence():
         assert abs(p_rows[0].risk - res['risk_probability']) < 1e-6
 
 @pytest.mark.asyncio
+async def test_session_id_is_persisted_with_vitals_and_prediction():
+    patient_id = 'DB-SESSION-TRACE'
+    session_id = 'SESSION-TRACE-01'
+    patient_service.require(patient_id)
+    await InferenceService.ingest(VitalEvent(
+        patient_id=patient_id,
+        session_id=session_id,
+        timestamp=datetime.now(timezone.utc),
+        heart_rate=92.0,
+        map=72.0,
+    ))
+    with Session() as session:
+        vital = session.scalars(select(VitalRecord).where(
+            VitalRecord.patient_id == patient_id,
+            VitalRecord.session_id == session_id,
+        )).first()
+        prediction = session.scalars(select(PredictionRecord).where(
+            PredictionRecord.patient_id == patient_id,
+            PredictionRecord.session_id == session_id,
+        )).first()
+    assert vital is not None
+    assert prediction is not None
+    assert prediction.payload['session_id'] == session_id
+
+@pytest.mark.asyncio
 async def test_07_alert_persistence():
     patient_id = "DB-PAT-005-ALERT"
     patient_service.require(patient_id)
@@ -194,13 +219,13 @@ def test_13_transaction_rollback():
 
 
 def test_14_database_unavailable_handling():
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, text
     from sqlalchemy.exc import OperationalError
     
-    bad_engine = create_engine("postgresql://invalid_user:invalid_pass@127.0.0.1:59999/bad_db", connect_args={'connect_timeout': 1})
-    with pytest.raises((OperationalError, Exception)):
+    bad_engine = create_engine("postgresql+psycopg://invalid_user:invalid_pass@127.0.0.1:59999/bad_db", connect_args={'connect_timeout': 1})
+    with pytest.raises(OperationalError):
         with bad_engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
 
 def test_15_session_cleanup_after_failure():
     patient_id = "DB-CLEANUP-FAIL"

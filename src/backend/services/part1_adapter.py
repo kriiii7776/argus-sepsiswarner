@@ -73,6 +73,7 @@ class Part1Adapter:
 
         return VitalEvent(
             patient_id=str(patient_id),
+            session_id=str(payload['session_id']) if payload.get('session_id') else None,
             timestamp=clinical_ts,
             heart_rate=float(hr) if hr is not None else None,
             map=float(calculated_map) if calculated_map is not None else None,

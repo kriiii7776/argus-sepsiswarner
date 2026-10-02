@@ -1,84 +1,65 @@
-version: '3.8'
-
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: sepsisguard_db
+  postgres:
+    image: postgres:16-alpine
+    container_name: argus_postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-sepsis_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sepsis_password}
-      POSTGRES_DB: ${POSTGRES_DB:-sepsis_db}
+      POSTGRES_DB: sepsisguard
+      POSTGRES_USER: sepsisguard
+      POSTGRES_PASSWORD: sepsisguard
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sepsis_user} -d ${POSTGRES_DB:-sepsis_db}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U sepsisguard -d sepsisguard"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: sepsisguard_redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  inference:
+  part1:
     build:
-      context: ./src/inference
+      context: ./part1/backend
       dockerfile: Dockerfile
-    container_name: sepsisguard_inference
+    container_name: argus_part1_simulator
     environment:
-      - MODEL_PATH=/app/models/production_model.pkl
+      - ARGUS_HOST=0.0.0.0
+      - ARGUS_PORT=8001
+      - ARGUS_DEMO_MODE=true
+      - ARGUS_DEMO_PATIENT_ID=PATIENT-001
+      - ARGUS_DEMO_SPEED=1.0
     ports:
       - "8001:8001"
     volumes:
-      - ./model:/app/models
+      - ./.argus_live_part1_registry_20261002.json:/app/patient_registry.json
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 15s
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8001/api/v1/health\")'"]
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 5
 
   backend:
     build:
-      context: ./src/backend
-      dockerfile: Dockerfile
-    container_name: sepsisguard_backend
+      context: .
+      dockerfile: deployment/backend/Dockerfile
+    container_name: argus_part2_backend
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-sepsis_user}:${POSTGRES_PASSWORD:-sepsis_password}@db:5432/${POSTGRES_DB:-sepsis_db}
-      - REDIS_URL=redis://redis:6379/0
-      - INFERENCE_API_URL=http://inference:8001
+      - DATABASE_URL=postgresql+psycopg://sepsisguard:sepsisguard@postgres:5432/sepsisguard
+      - ARGUS_PART1_BRIDGE_ENABLED=true
+      - ARGUS_PART1_WS_URL=ws://part1:8001/api/v1/stream
+      - HOST=0.0.0.0
+      - PORT=8000
     ports:
       - "8000:8000"
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      inference:
+      part1:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 15s
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/v1/health\")'"]
+      interval: 5s
       timeout: 5s
-      retries: 3
-
-  frontend:
-    build:
-      context: ./src/frontend
-      dockerfile: Dockerfile
-    container_name: sepsisguard_frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
+      retries: 5
 
 volumes:
   postgres_data:

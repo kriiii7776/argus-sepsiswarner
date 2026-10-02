@@ -1,5 +1,5 @@
-import React from 'react';
-import { Search, Bell, Activity } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { User, LogOut, Activity } from 'lucide-react';
 import { Badge } from '../common/Badge';
 
 interface HeaderProps {
@@ -9,6 +9,8 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ title, activePatientName, activeBed }) => {
+  const { user, logout } = useAuth();
+
   return (
     <header className="app-header">
       <div>
@@ -21,31 +23,26 @@ export const Header: React.FC<HeaderProps> = ({ title, activePatientName, active
       </div>
 
       <div className="header-actions">
-        <div style={{ position: 'relative', width: '240px' }}>
-          <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input
-            type="text"
-            placeholder="Search patient, bed, MRN..."
-            style={{
-              width: '100%',
-              padding: '0.4rem 0.75rem 0.4rem 2.2rem',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border-color)',
-              fontSize: '0.85rem',
-              outline: 'none',
-              backgroundColor: 'var(--bg-app)'
-            }}
-          />
-        </div>
+        {user && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Badge variant={user.role === 'ADMIN' ? 'red' : user.role === 'DOCTOR' ? 'blue' : 'orange'}>
+              <User size={12} /> {user.name} ({user.role})
+            </Badge>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Badge variant="blue">
-            <Activity size={12} /> MODEL: LOGISTIC-REGRESSION-V1
-          </Badge>
-          <button className="btn btn-outline" style={{ padding: '0.4rem', borderRadius: '50%' }}>
-            <Bell size={18} />
-          </button>
-        </div>
+            <button
+              className="btn btn-outline"
+              onClick={logout}
+              title="Sign Out"
+              style={{ padding: '0.35rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+            >
+              <LogOut size={14} /> Exit
+            </button>
+          </div>
+        )}
+
+        <Badge variant="blue">
+          <Activity size={12} /> MODEL: LOGISTIC-REGRESSION-V1
+        </Badge>
       </div>
     </header>
   );

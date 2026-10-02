@@ -22,6 +22,40 @@ from app.api.v1.health import get_health, HealthResponse
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} [{settings.ENVIRONMENT}]")
+    
+    # Auto-seed PATIENT-001 if missing
+    from app.services.patient_registry import patient_registry
+    from app.schemas.patient import PatientProfileType, PatientSex
+
+    demo_patient = patient_registry.get_patient(settings.DEMO_PATIENT_ID)
+    if not demo_patient:
+        try:
+            demo_patient = patient_registry.create_patient(
+                patient_id=settings.DEMO_PATIENT_ID,
+                session_id="LIVE-TEST-001",
+                age=65,
+                sex=PatientSex.MALE,
+                profile_type=PatientProfileType.ICU_BASELINE,
+                seed=42,
+            )
+            logger.info(f"Auto-seeded demo patient: {settings.DEMO_PATIENT_ID}")
+        except Exception as e:
+            logger.warning(f"Demo patient creation skipped: {e}")
+
+    if settings.DEMO_MODE:
+        from app.services.simulation_service import simulation_service
+        from app.simulation.scenario_engine import ScenarioName
+        try:
+            simulation_service.set_patient_scenario(settings.DEMO_PATIENT_ID, ScenarioName.RAPID_DETERIORATION)
+            simulation_service.start_simulation(
+                patient_id=settings.DEMO_PATIENT_ID,
+                session_id="LIVE-TEST-001",
+                speed_factor=settings.DEMO_SPEED_FACTOR,
+            )
+            logger.info(f"DEMO_MODE active: Auto-started simulation for {settings.DEMO_PATIENT_ID} ({settings.DEMO_SPEED_FACTOR}x speed)")
+        except Exception as e:
+            logger.error(f"Failed to auto-start DEMO simulation: {e}")
+
     yield
     logger.info(f"Shutting down {settings.PROJECT_NAME}")
 

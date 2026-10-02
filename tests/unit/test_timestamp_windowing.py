@@ -1,8 +1,9 @@
 import pytest
 from datetime import datetime, timezone, timedelta
 import numpy as np
-from src.backend.services.inference_runtime import Runtime
+from src.backend.services.inference_runtime import Runtime, FEATURES
 from src.backend.schemas.schemas import VitalEvent
+from src.pipeline.canonical_features import FEATURES as CANONICAL_FEATURES, build_feature_row
 
 def create_event(patient_id: str, ts: datetime, hr: float = 80.0, map_val: float = 75.0, rr: float = 16.0, spo2: float = 98.0, temp: float = 37.0):
     return VitalEvent(
@@ -197,3 +198,34 @@ def test_12_future_and_late_arrival_timestamps():
     h_ts = [x['timestamp'] for x in rt.history[patient]]
     assert h_ts == [t0, t1, t2]
     assert rt.history[patient][-1]['hr_curr'] == 100.0
+
+
+@pytest.mark.parametrize('pattern', ['stable', 'deteriorating', 'recovering', 'irregular', 'missing'])
+def test_13_runtime_and_canonical_training_features_match(pattern):
+    rt = Runtime()
+    patient = f'PARITY-{pattern}'
+    start = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    offsets = [0, 1, 2, 3, 4] if pattern != 'irregular' else [0, 0.5, 2.25, 3, 4]
+    history = []
+    for index, hours in enumerate(offsets):
+        trend = {'stable': 0, 'deteriorating': index * 5, 'recovering': (4-index) * 5,
+                 'irregular': index * 2, 'missing': index * 3}[pattern]
+        history.append({
+            'timestamp': start + timedelta(hours=hours),
+            'heart_rate': None if pattern == 'missing' and index == 2 else 80 + trend,
+            'map': 75 - trend / 2, 'resp_rate': 16 + trend / 5,
+            'spo2': 98 - trend / 10, 'temperature_c': 37 + trend / 50,
+            'lactate': 1.2 if index == 0 else None,
+        })
+    rt.history[patient] = [{
+        'timestamp': event['timestamp'], 'hr_curr': event['heart_rate'],
+        'map_curr': event['map'], 'rr_curr': event['resp_rate'],
+        'spo2_curr': event['spo2'], 'temp_curr': event['temperature_c'],
+        'lactate': event['lactate'],
+    } for event in history]
+    expected = build_feature_row(history)
+    actual_vector, actual_row = rt.features(patient)
+    expected_vector = np.array([expected[name] for name in CANONICAL_FEATURES])
+    assert CANONICAL_FEATURES == FEATURES
+    assert np.allclose(actual_vector, expected_vector, rtol=0, atol=1e-12, equal_nan=True)
+    assert set(actual_row) == set(expected)

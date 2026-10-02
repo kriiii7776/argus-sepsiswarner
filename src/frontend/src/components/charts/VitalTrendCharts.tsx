@@ -23,6 +23,18 @@ interface Props {
 }
 
 export const VitalTrendCharts: React.FC<Props> = ({ data }) => {
+  const chartData = React.useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    return data.map(d => ({
+      time: d.time || '',
+      hr: typeof d.hr === 'number' && !isNaN(d.hr) ? d.hr : 0,
+      map: typeof d.map === 'number' && !isNaN(d.map) ? d.map : 0,
+      temp: typeof d.temp === 'number' && !isNaN(d.temp) ? d.temp : 0,
+      spo2: typeof d.spo2 === 'number' && !isNaN(d.spo2) ? d.spo2 : 0,
+      lactate: typeof d.lactate === 'number' && !isNaN(d.lactate) ? d.lactate : 0,
+    }));
+  }, [data]);
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
       {/* Heart Rate & MAP Chart */}
@@ -32,7 +44,7 @@ export const VitalTrendCharts: React.FC<Props> = ({ data }) => {
         </h4>
         <div style={{ height: '200px' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 5, right: 20, left: -20, bottom: 0 }}>
+            <LineChart data={chartData} margin={{ top: 5, right: 20, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
               <XAxis dataKey="time" stroke="var(--text-secondary)" fontSize={11} />
               <YAxis stroke="var(--text-secondary)" fontSize={11} />
@@ -51,7 +63,7 @@ export const VitalTrendCharts: React.FC<Props> = ({ data }) => {
         </h4>
         <div style={{ height: '200px' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 5, right: 20, left: -20, bottom: 0 }}>
+            <LineChart data={chartData} margin={{ top: 5, right: 20, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
               <XAxis dataKey="time" stroke="var(--text-secondary)" fontSize={11} />
               <YAxis yAxisId="left" stroke="var(--color-review)" fontSize={11} />

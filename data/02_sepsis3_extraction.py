@@ -1,82 +1,77 @@
-import os
-from pyspark.sql import SparkSession
+"""Read the official MIMIC-IV derived Sepsis-3 event relation.
 
-def extract_sepsis3_cohort(spark):
+The former prototype computed a one-component MAP score (only 0 or 1) and
+compared it with a threshold of 2, while also using an incomplete antibiotic
+join. That cannot implement Sepsis-3. This module now fails closed unless the
+MIT-LCP MIMIC-Code `mimiciv_derived.sepsis3` concept has been built for the
+source database. It deliberately does not substitute a simplified label.
+
+The upstream concept uses suspected infection and the full six-component
+SOFA score, evaluates SOFA in the 48-hours-before to 24-hours-after infection
+window, and records the first qualifying event per ICU stay. See:
+https://github.com/MIT-LCP/mimic-code/tree/main/mimic-iv/concepts
+"""
+from __future__ import annotations
+
+import re
+from typing import Any
+
+
+DEFAULT_TABLE = "mimiciv_derived.sepsis3"
+REQUIRED_COLUMNS = {
+    "subject_id",
+    "stay_id",
+    "suspected_infection_time",
+    "sofa_time",
+    "sofa_score",
+    "sepsis3",
+}
+_TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+
+
+def extract_sepsis3_cohort(spark: Any, table_name: str = DEFAULT_TABLE):
+    """Return validated official MIMIC-Code Sepsis-3 event rows.
+
+    `spark` must already contain the output of the upstream MIMIC-Code
+    suspicion-of-infection, SOFA, and Sepsis-3 concepts. A raw-table shortcut
+    is intentionally not provided: the repository's simplified score was
+    mathematically incapable of meeting its own label threshold.
     """
-    Translates the core MIT-LCP Sepsis-3 SQL concepts into PySpark.
-    Note: For a full production run, we would import the exact SQL files from 
-    https://github.com/MIT-LCP/mimic-iv/tree/master/concepts/sepsis
-    Because we registered our DataFrames as temp views, we can run Spark SQL natively.
-    """
-    
-    print("Extracting ICU stays...")
-    # 1. Base cohort: ICU Stays
-    icu_stays = spark.sql("""
-        SELECT stay_id, subject_id, hadm_id, intime, outtime
-        FROM icustays
-    """)
-    icu_stays.createOrReplaceTempView("cohort")
-    
-    # 2. Suspected Infection (Simplified for prototype)
-    # Clinically: Antibiotics + blood cultures within [abx-24h, abx+72h]
-    print("Identifying suspected infection (antibiotics + cultures)...")
-    suspi_infect = spark.sql("""
-        SELECT 
-            p.stay_id,
-            m.charttime AS culture_time,
-            a.starttime AS abx_time,
-            COALESCE(m.charttime, a.starttime) AS suspected_infection_time
-        FROM cohort p
-        LEFT JOIN microbiologyevents m ON p.hadm_id = m.hadm_id
-        LEFT JOIN pharmacy a ON p.hadm_id = a.hadm_id 
-            AND a.medication LIKE '%vancomycin%' -- Example filter, would need full abx list
-    """)
-    suspi_infect.createOrReplaceTempView("suspi_infect")
-    
-    # 3. SOFA Score Evaluation (Simplified for prototype)
-    # Clinically: Respiration (PaO2/FiO2), Coagulation (Platelets), Liver (Bilirubin),
-    # Cardiovascular (MAP/Vasopressors), CNS (GCS), Renal (Creatinine/Urine)
-    print("Calculating rolling SOFA scores...")
-    sofa_scores = spark.sql("""
-        SELECT 
-            stay_id,
-            charttime,
-            -- Hypothetical logic for cardiovascular SOFA component based on MAP
-            CASE 
-                WHEN valuenum < 70 THEN 1 
-                ELSE 0 
-            END AS sofa_cardiovascular
-        FROM chartevents
-        WHERE itemid IN (220052, 220181) -- Arterial BP Mean, Non-Invasive BP Mean
-    """)
-    sofa_scores.createOrReplaceTempView("sofa_scores")
-    
-    # 4. Final Sepsis-3 Definition
-    # Infection + SOFA increase >= 2
-    print("Labeling Sepsis-3 onset times ($t_{sepsis}$)...")
-    sepsis3_labels = spark.sql("""
-        SELECT 
-            s.stay_id,
-            si.suspected_infection_time,
-            MAX(s.sofa_cardiovascular) AS max_sofa,
-            CASE 
-                WHEN MAX(s.sofa_cardiovascular) >= 2 AND si.suspected_infection_time IS NOT NULL THEN 1 
-                ELSE 0 
-            END AS sepsis3_label
-        FROM sofa_scores s
-        JOIN suspi_infect si ON s.stay_id = si.stay_id
-        GROUP BY s.stay_id, si.suspected_infection_time
-    """)
-    
-    return sepsis3_labels
+    if not _TABLE_NAME.fullmatch(table_name):
+        raise ValueError(f"Invalid derived relation name: {table_name!r}")
+
+    try:
+        exists = spark.catalog.tableExists(table_name)
+    except Exception as exc:
+        raise RuntimeError(
+            "Spark catalog is unavailable; load the MIMIC-Code derived "
+            "Sepsis-3 relation before extracting labels."
+        ) from exc
+    if not exists:
+        raise RuntimeError(
+            f"Required relation {table_name!r} is absent. Build the official "
+            "MIT-LCP MIMIC-Code suspicion_of_infection, sofa, and sepsis3 "
+            "concepts for this MIMIC-IV release first. Raw-table fallback is "
+            "disabled because it would create unvalidated labels."
+        )
+
+    events = spark.table(table_name)
+    missing = REQUIRED_COLUMNS - set(events.columns)
+    if missing:
+        raise ValueError(
+            f"{table_name!r} is not a compatible official Sepsis-3 relation; "
+            f"missing columns: {sorted(missing)}"
+        )
+    return events.select(*sorted(REQUIRED_COLUMNS))
+
 
 if __name__ == "__main__":
-    # Assumes Spark is already running and tables are loaded via 01_ingest_demo_data.py
-    spark = SparkSession.builder.appName("SepsisGuard-FeatureExtraction").getOrCreate()
+    from pyspark.sql import SparkSession
+
+    spark = SparkSession.builder.appName("Argus-Official-Sepsis3-Import").getOrCreate()
     try:
-        labels_df = extract_sepsis3_cohort(spark)
-        labels_df.show(5)
-        print("Feature extraction pipeline established.")
-    except Exception as e:
-        print("Note: Run 01_ingest_demo_data.py first to load tables into Spark.")
-        print(f"Error: {e}")
+        labels = extract_sepsis3_cohort(spark)
+        labels.show(5, truncate=False)
+        print(f"Loaded {labels.count()} official Sepsis-3 event rows.")
+    except Exception as exc:
+        raise SystemExit(f"Sepsis-3 extraction stopped safely: {exc}") from exc

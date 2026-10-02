@@ -14,6 +14,9 @@ import type { ConnectionStatus as ConnectionStatusType } from '../../types';
 
 import type { ConnectionLifecycleState } from '../../services/websocket';
 
+import { useAuth } from '../../contexts/AuthContext';
+import { ShieldCheck } from 'lucide-react';
+
 interface SidebarProps {
   currentTab: string;
   onNavigate: (tab: string) => void;
@@ -22,7 +25,13 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onNavigate, status, wsState }) => {
-  const navItems = [
+  const { user } = useAuth();
+  const role = user?.role || 'DOCTOR';
+
+  const navItems = role === 'ADMIN' ? [
+    { id: 'admin', label: 'Admin Console', icon: <ShieldCheck size={18} /> },
+    { id: 'settings', label: 'Settings', icon: <Settings size={18} /> },
+  ] : [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
     { id: 'patients', label: 'Patients Roster', icon: <Users size={18} /> },
     { id: 'patient-details', label: 'Patient Focus', icon: <UserCheck size={18} /> },

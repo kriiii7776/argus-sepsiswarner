@@ -4,28 +4,36 @@ interface StatCardProps {
   title: string;
   value: string | number;
   subtext?: string;
+  subtitle?: string;
   icon?: React.ReactNode;
   trend?: 'up' | 'down' | 'neutral';
   trendValue?: string;
   badge?: React.ReactNode;
-  variant?: 'default' | 'critical' | 'warning' | 'stable';
+  variant?: 'default' | 'critical' | 'warning' | 'stable' | 'blue' | 'green' | 'orange' | 'purple' | 'red';
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
   title,
   value,
   subtext,
+  subtitle,
   icon,
   trend,
   trendValue,
   badge,
   variant = 'default'
 }) => {
+  const displaySubtext = subtext || subtitle;
   const getBorderColor = () => {
     switch (variant) {
-      case 'critical': return 'var(--color-critical)';
-      case 'warning': return 'var(--color-review)';
-      case 'stable': return 'var(--color-stable)';
+      case 'critical':
+      case 'red': return 'var(--color-critical)';
+      case 'warning':
+      case 'orange': return 'var(--color-review)';
+      case 'stable':
+      case 'green': return 'var(--color-stable)';
+      case 'blue': return 'var(--color-info)';
+      case 'purple': return 'var(--color-primary)';
       default: return 'var(--border-color)';
     }
   };
@@ -46,14 +54,14 @@ export const StatCard: React.FC<StatCardProps> = ({
         {badge}
       </div>
 
-      {(subtext || trendValue) && (
+      {(displaySubtext || trendValue) && (
         <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
           {trend && (
             <span style={{ color: trend === 'up' ? 'var(--color-critical)' : trend === 'down' ? 'var(--color-stable)' : 'var(--text-muted)', fontWeight: 600 }}>
               {trend === 'up' ? '▲' : trend === 'down' ? '▼' : '●'} {trendValue}
             </span>
           )}
-          {subtext && <span>{subtext}</span>}
+          {displaySubtext && <span>{displaySubtext}</span>}
         </div>
       )}
     </div>

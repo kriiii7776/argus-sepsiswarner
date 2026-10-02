@@ -5,13 +5,16 @@ from src.backend.core.config import settings
 from src.backend.api.router import api_router
 from src.backend.core.logging import logger
 from src.backend.db.store import init_db
+from src.backend.services.part1_ws_bridge import part1_bridge
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting up Argus SepsisGuard Backend")
     init_db()
     logger.info("Database tables initialized")
+    await part1_bridge.start()
     yield
+    await part1_bridge.stop()
     logger.info("Shutting down Argus SepsisGuard Backend")
 
 app = FastAPI(

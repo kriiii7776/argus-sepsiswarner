@@ -27,6 +27,11 @@ class Settings(BaseModel):
     # CORS Configuration
     CORS_ORIGINS: List[str] = Field(default=["*"])
 
+    # Demo Mode Configuration
+    DEMO_MODE: bool = Field(default=False)
+    DEMO_PATIENT_ID: str = Field(default="PATIENT-001")
+    DEMO_SPEED_FACTOR: float = Field(default=1.0)
+
     @classmethod
     def load_from_env(cls) -> "Settings":
         return cls(
@@ -41,7 +46,11 @@ class Settings(BaseModel):
             DATABASE_URL=os.getenv("ARGUS_DATABASE_URL", os.getenv("DATABASE_URL", "postgresql://argus:argus_pass@localhost:5432/argus_db")),
             DB_POOL_SIZE=int(os.getenv("ARGUS_DB_POOL_SIZE", "5")),
             DB_MAX_OVERFLOW=int(os.getenv("ARGUS_DB_MAX_OVERFLOW", "10")),
+            DEMO_MODE=os.getenv("ARGUS_DEMO_MODE", "false").lower() in ("true", "1", "yes"),
+            DEMO_PATIENT_ID=os.getenv("ARGUS_DEMO_PATIENT_ID", "PATIENT-001"),
+            DEMO_SPEED_FACTOR=float(os.getenv("ARGUS_DEMO_SPEED", os.getenv("DEMO_SPEED", "1.0"))),
         )
+
 
 
 settings = Settings.load_from_env()

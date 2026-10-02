@@ -4,7 +4,7 @@ Simulation Runtime Orchestration Service.
 Manages active simulation clock, active scenario engine, background streaming loops, and patient runtime bindings.
 """
 
-from typing import Optional
+from typing import Dict, Optional
 from datetime import datetime, timezone
 import asyncio
 
@@ -12,6 +12,7 @@ from app.schemas.control import SimulationStatusResponse
 from app.schemas.patient import Patient
 from app.simulation.clock import ClockState, SimulationClock
 from app.simulation.scenario_engine import ScenarioEngine, ScenarioEngineState, ScenarioName
+from app.core.logging import logger
 from app.services.patient_registry import patient_registry
 from app.core.exceptions import ARGUSException
 from app.replay.mimic_historical import MIMICHistoricalReplay
@@ -25,7 +26,8 @@ class SimulationService:
 
     def __init__(self):
         self.clock = SimulationClock()
-        self.scenario_engine = ScenarioEngine(ScenarioName.STABLE)
+        self._scenario_engines: Dict[str, ScenarioEngine] = {}
+        self._default_scenario_engine = ScenarioEngine(ScenarioName.STABLE)
         self.source_mode: str = "SIMULATION"  # "SIMULATION" or "REPLAY"
         self._active_session_id: Optional[str] = None
         self._active_patient_id: Optional[str] = None
@@ -33,6 +35,26 @@ class SimulationService:
         self._historical_replay = MIMICHistoricalReplay()
         self._generators: dict = {}
         self._last_clinical_update_second: Optional[int] = None
+
+    def get_scenario_engine(self, patient_id: Optional[str] = None) -> ScenarioEngine:
+        """
+        Retrieves or creates the patient-specific ScenarioEngine for patient_id,
+        or active patient, or fallback default engine.
+        """
+        if patient_id:
+            if patient_id not in self._scenario_engines:
+                self._scenario_engines[patient_id] = ScenarioEngine(ScenarioName.STABLE)
+            return self._scenario_engines[patient_id]
+        elif self._active_patient_id:
+            return self.get_scenario_engine(self._active_patient_id)
+        return self._default_scenario_engine
+
+    @property
+    def scenario_engine(self) -> ScenarioEngine:
+        """
+        Backwards-compatible property returning the ScenarioEngine for the active patient (or default).
+        """
+        return self.get_scenario_engine(self._active_patient_id)
 
     @property
     def active_session_id(self) -> Optional[str]:
@@ -104,10 +126,12 @@ class SimulationService:
 
     def stop_simulation(self) -> SimulationStatusResponse:
         """
-        Stops active simulation clock and resets scenario engine.
+        Stops active simulation clock and resets all scenario engines.
         """
         self.clock.stop()
-        self.scenario_engine.set_scenario(ScenarioName.STABLE)
+        for engine in self._scenario_engines.values():
+            engine.set_scenario(ScenarioName.STABLE)
+        self._default_scenario_engine.set_scenario(ScenarioName.STABLE)
         self._generators.clear()
         self._last_clinical_update_second = None
         return self.get_status()
@@ -121,7 +145,7 @@ class SimulationService:
 
     def set_patient_scenario(self, patient_id: str, scenario_name: ScenarioName) -> SimulationStatusResponse:
         """
-        Sets target scenario state-machine for a patient.
+        Sets target scenario state-machine for a specific patient.
         """
         patient = patient_registry.get_patient(patient_id)
         if not patient:
@@ -132,7 +156,8 @@ class SimulationService:
             )
         self._active_patient_id = patient_id
         self._active_session_id = patient.session_id
-        self.scenario_engine.set_scenario(scenario_name)
+        engine = self.get_scenario_engine(patient_id)
+        engine.set_scenario(scenario_name)
         self._last_clinical_update_second = None
         return self.get_status()
 
@@ -145,54 +170,83 @@ class SimulationService:
     async def _stream_loop(self) -> None:
         from app.simulation.vital_generator import VitalSignGenerator
 
+        logger.info("Simulation stream loop started")
         while True:
-            await asyncio.sleep(1.0)
-            if self.clock.status().state != ClockState.RUNNING:
-                if self.clock.status().state == ClockState.STOPPED:
-                    return
-                continue
-            clock = self.clock.status()
-            # One replay tick represents one minute of the source ICU timeline.
-            replay_tick = int(clock.elapsed_sim_seconds / 60)
-            for patient in patient_registry.list_patients():
-                if self.source_mode == "REPLAY":
-                    vital_message = self._historical_replay.vital_update(patient.patient_id, replay_tick)
-                else:
-                    if patient.patient_id not in self._generators:
-                        self._generators[patient.patient_id] = VitalSignGenerator(patient, seed=42)
-                    generator = self._generators[patient.patient_id]
-                    effect = self.scenario_engine.get_effect(clock.elapsed_sim_seconds)
-                    vital_message = generator.generate_vitals(
-                        simulation_time=clock.current_sim_time,
-                        wall_timestamp=datetime.now(timezone.utc),
-                        scenario_state=effect.contract_scenario_state,
-                        quality_status=effect.quality_status,
-                        scenario_effect=effect,
+            try:
+                await asyncio.sleep(1.0)
+                if self.clock.status().state != ClockState.RUNNING:
+                    if self.clock.status().state == ClockState.STOPPED:
+                        logger.info("Simulation stream loop stopping (clock stopped)")
+                        return
+                    continue
+                clock = self.clock.status()
+                # One replay tick represents one minute of the source ICU timeline.
+                replay_tick = int(clock.elapsed_sim_seconds / 60)
+
+                # Clean up engines and generators for removed patients
+                active_ids = {p.patient_id for p in patient_registry.list_patients()}
+                stale_ids = set(self._scenario_engines.keys()) - active_ids
+                for sid in stale_ids:
+                    self._scenario_engines.pop(sid, None)
+                stale_gen_ids = set(self._generators.keys()) - active_ids
+                for sid in stale_gen_ids:
+                    self._generators.pop(sid, None)
+
+                for patient in patient_registry.list_patients():
+                    if self.source_mode == "REPLAY":
+                        vital_message = self._historical_replay.vital_update(patient.patient_id, replay_tick)
+                    else:
+                        if patient.patient_id not in self._generators:
+                            self._generators[patient.patient_id] = VitalSignGenerator(patient)
+                        generator = self._generators[patient.patient_id]
+                        engine = self.get_scenario_engine(patient.patient_id)
+                        effect = engine.update(clock.elapsed_sim_seconds)
+                        vital_message = generator.generate_vitals(
+                            simulation_time=clock.simulation_time,
+                            wall_timestamp=datetime.now(timezone.utc),
+                            scenario_state=effect.contract_scenario_state,
+                            quality_status=effect.quality_status,
+                            scenario_effect=effect,
+                        )
+
+                    logger.debug(
+                        "Broadcasting vital_update: patient_id=%s, session_id=%s, sim_time=%s",
+                        vital_message.patient_id,
+                        vital_message.session_id,
+                        vital_message.simulation_time,
                     )
+                    delivered = await stream_manager.broadcast(vital_message, session_id=vital_message.session_id)
+                    logger.debug("Broadcast result: delivered_count=%d", delivered)
 
-                await stream_manager.broadcast(vital_message, session_id=vital_message.session_id)
-
-                if self.source_mode == "REPLAY" and self._last_clinical_update_second != replay_tick:
-                    clinical_message = self._historical_replay.clinical_update(patient.patient_id, replay_tick)
-                    await stream_manager.broadcast(clinical_message, session_id=clinical_message.session_id)
-            self._last_clinical_update_second = replay_tick
+                    if self.source_mode == "REPLAY" and self._last_clinical_update_second != replay_tick:
+                        clinical_message = self._historical_replay.clinical_update(patient.patient_id, replay_tick)
+                        await stream_manager.broadcast(clinical_message, session_id=clinical_message.session_id)
+                self._last_clinical_update_second = replay_tick
+            except asyncio.CancelledError:
+                logger.info("Simulation stream loop cancelled")
+                break
+            except Exception as exc:
+                logger.error("Exception in simulation stream loop: %s", exc, exc_info=True)
+                await asyncio.sleep(1.0)
 
     def get_status(self) -> SimulationStatusResponse:
         """
         Returns structured simulation runtime status summary.
         """
         clock_status = self.clock.status()
-        self.scenario_engine.update(clock_status.elapsed_sim_seconds)
+        engine = self.get_scenario_engine(self._active_patient_id)
+        engine.update(clock_status.elapsed_sim_seconds)
 
         return SimulationStatusResponse(
             clock_status=clock_status,
             active_session_id=self._active_session_id,
             active_patient_id=self._active_patient_id,
-            active_scenario_name=self.scenario_engine.scenario_name,
-            active_scenario_state=self.scenario_engine.get_current_state(),
+            active_scenario_name=engine.scenario_name,
+            active_scenario_state=engine.get_current_state(),
             registered_patients_count=len(patient_registry.list_patients()),
         )
 
 
 # Global Singleton Simulation Service Instance
 simulation_service = SimulationService()
+

@@ -4,6 +4,8 @@ Thread-safe Patient Registry Service.
 Manages active patient simulation lifecycles and patient metadata.
 """
 
+import json
+from pathlib import Path
 from threading import Lock
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
@@ -16,16 +18,46 @@ from app.schemas.patient import (
 )
 from app.simulation.patient_generator import PatientFactory
 from app.core.exceptions import ARGUSException
+from app.core.logging import logger
 
 
 class PatientRegistry:
     """
-    In-memory thread-safe registry for managing active simulation patients.
+    Thread-safe registry for managing active simulation patients with disk persistence.
     """
 
-    def __init__(self):
+    def __init__(self, persistence_file: str = "patient_registry.json"):
         self._patients: Dict[str, Patient] = {}
         self._lock = Lock()
+        self._persistence_file = Path(persistence_file)
+        self._load_from_disk()
+
+    def _save_to_disk(self) -> None:
+        try:
+            data = [p.model_dump(mode="json") for p in self._patients.values()]
+            self._persistence_file.write_text(json.dumps(data, indent=2))
+        except Exception as exc:
+            logger.error(
+                "Failed to save patient registry to disk file '%s': %s",
+                self._persistence_file,
+                exc,
+                exc_info=True,
+            )
+
+    def _load_from_disk(self) -> None:
+        try:
+            if self._persistence_file.exists():
+                raw = json.loads(self._persistence_file.read_text())
+                for item in raw:
+                    patient = Patient.model_validate(item)
+                    self._patients[patient.patient_id] = patient
+        except Exception as exc:
+            logger.error(
+                "Failed to load patient registry from disk file '%s': %s",
+                self._persistence_file,
+                exc,
+                exc_info=True,
+            )
 
     def register_patient(self, patient: Patient) -> Patient:
         """
@@ -33,6 +65,7 @@ class PatientRegistry:
         """
         with self._lock:
             self._patients[patient.patient_id] = patient
+            self._save_to_disk()
             return patient
 
     def create_patient(
@@ -48,6 +81,10 @@ class PatientRegistry:
         """
         Creates a new synthetic patient baseline and registers it.
         """
+        with self._lock:
+            if patient_id and patient_id in self._patients:
+                return self._patients[patient_id]
+
         patient = PatientFactory.create_patient(
             patient_id=patient_id,
             session_id=session_id,
@@ -91,6 +128,7 @@ class PatientRegistry:
                 update={"status": status, "updated_at": datetime.now(timezone.utc)}
             )
             self._patients[patient_id] = updated_patient
+            self._save_to_disk()
             return updated_patient
 
     def remove_patient(self, patient_id: str) -> bool:
@@ -100,6 +138,7 @@ class PatientRegistry:
         with self._lock:
             if patient_id in self._patients:
                 del self._patients[patient_id]
+                self._save_to_disk()
                 return True
             return False
 
@@ -109,6 +148,7 @@ class PatientRegistry:
         """
         with self._lock:
             self._patients.clear()
+            self._save_to_disk()
 
 
 # Global Singleton Registry Instance

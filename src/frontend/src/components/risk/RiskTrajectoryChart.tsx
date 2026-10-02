@@ -21,10 +21,17 @@ interface Props {
 }
 
 export const RiskTrajectoryChart: React.FC<Props> = ({ data }) => {
-  const chartData = data.map(d => ({
-    time: d.timeLabel,
-    riskPct: Math.round(d.risk_probability * 100)
-  }));
+  const chartData = React.useMemo(() => {
+    if (!Array.isArray(data)) return [];
+    return data.map((d) => {
+      const rawRisk = typeof d.risk_probability === 'number' && !isNaN(d.risk_probability) ? d.risk_probability : 0;
+      const riskPct = rawRisk <= 1.0 ? Math.round(rawRisk * 100) : Math.round(rawRisk);
+      return {
+        time: d.timeLabel || '',
+        riskPct: Math.min(100, Math.max(0, riskPct))
+      };
+    });
+  }, [data]);
 
   return (
     <div style={{ width: '100%', height: '260px' }}>

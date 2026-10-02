@@ -79,8 +79,9 @@ async def process_ws_message(ws: WebSocket, data: str, is_stream_endpoint: bool)
 
 
 @router.websocket('/ws/stream')
-async def websocket_stream(ws: WebSocket):
+async def websocket_stream(ws: WebSocket, user_id: str | None = None):
     await ws.accept()
+    ws.state.user_id = user_id or ws.query_params.get('user_id')
     broker.subscribers.add(ws)
     try:
         while True:
@@ -91,8 +92,9 @@ async def websocket_stream(ws: WebSocket):
 
 
 @router.websocket('/ws')
-async def websocket_endpoint(ws: WebSocket):
+async def websocket_endpoint(ws: WebSocket, user_id: str | None = None):
     await ws.accept()
+    ws.state.user_id = user_id or ws.query_params.get('user_id')
     broker.subscribers.add(ws)
     try:
         while True:

@@ -5,6 +5,7 @@ Generates smooth, coupled, baseline-anchored physiological vitals for synthetic 
 incorporating scenario effects, noise scaling, and sensor fault simulation.
 """
 
+import hashlib
 from datetime import datetime, timezone
 import math
 from typing import Optional
@@ -31,8 +32,12 @@ class VitalSignGenerator:
 
     def __init__(self, patient: Patient, seed: Optional[int] = None):
         self.patient = patient
-        self.seed = seed
-        self.rng = np.random.default_rng(seed)
+        if seed is None:
+            digest = hashlib.sha256(patient.patient_id.encode("utf-8")).hexdigest()
+            self.seed = int(digest[:8], 16)
+        else:
+            self.seed = seed
+        self.rng = np.random.default_rng(self.seed)
 
         # Base phase offsets for physiological wave coupling
         self._hr_phase = self.rng.uniform(0, 2 * math.pi)

@@ -51,7 +51,8 @@ class PatientService:
         row = cls.repo.get(patient_id)
         if not row:
             raise NotFoundException(f"Patient {patient_id} not found")
-        cached_name = cls._names_cache.get(row.patient_id, f"Patient {row.patient_id[:8]}")
+        default_name = row.patient_id if row.patient_id.startswith("MIMIC") else f"Patient {row.patient_id}"
+        cached_name = cls._names_cache.get(row.patient_id, default_name)
         return Patient(
             id=row.patient_id,
             name=cached_name,

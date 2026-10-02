@@ -21,12 +21,18 @@ import time
 import logging
 import warnings
 import json
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
+
+
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
@@ -39,8 +45,12 @@ from sklearn.metrics import (
 from scipy.special import expit
 from scipy.optimize import minimize
 import xgboost as xgb
-import lightgbm as lgb
+try:
+    import lightgbm as lgb
+except ImportError:
+    lgb = None
 import joblib
+from src.pipeline.canonical_features import FEATURES, build_feature_row
 
 warnings.filterwarnings("ignore")
 
@@ -90,6 +100,8 @@ def generate_demo_dataset(n_patients=300, max_hours=72):
     records = []
 
     for sid in range(n_patients):
+        feature_history = []
+        admission_time = datetime(2020, 1, 1, tzinfo=timezone.utc)
         n_h = int(rng.integers(12, max_hours))
         is_sep = rng.random() < 0.20
         onset = int(rng.integers(n_h // 2, n_h)) if is_sep else -1
@@ -136,7 +148,15 @@ def generate_demo_dataset(n_patients=300, max_hours=72):
 
             lbl = 1 if (is_sep and 0 <= (onset - h) <= 6) else 0
 
-            records.append({
+            feature_history.append({
+                'timestamp': admission_time + timedelta(hours=h),
+                'heart_rate': hrv, 'map': mapv, 'resp_rate': rrv,
+                'spo2': spo2v, 'temperature_c': tmpv,
+                'lactate': None if lmis else 1.0,
+            })
+            canonical = build_feature_row(feature_history)
+
+            record = {
                 "subject_id": sid, "stay_id": sid + 10000, "hour": h,
                 "hr_curr": hrv, "map_curr": mapv, "rr_curr": rrv,
                 "spo2_curr": spo2v, "temp_curr": tmpv,
@@ -153,7 +173,11 @@ def generate_demo_dataset(n_patients=300, max_hours=72):
                 "lactate_missing": lmis, "time_since_lactate": tsl,
                 "qsofa_curr": qsf, "map_time_low_4h": mtl,
                 "icu_hour": h, "label": lbl,
-            })
+            }
+            # The same causal, timestamp-defined 31-feature implementation is
+            # used by online inference. Synthetic labels remain demo-only.
+            record.update(canonical)
+            records.append(record)
 
     df = pd.DataFrame(records)
     log.info(
@@ -319,6 +343,8 @@ def train_xgboost(Xt, yt, Xv, yv, gt, spw):
 
 
 def train_lightgbm(Xt, yt, Xv, yv, gt):
+    if lgb is None:
+        return None, None, 0.0, 0.0
     """
     LightGBM with class_weight=balanced.
     Phase 1: RandomizedSearchCV + GroupKFold on TRAIN.
@@ -365,6 +391,8 @@ def train_lightgbm(Xt, yt, Xv, yv, gt):
 # 6. Feature importance
 # ---------------------------------------------------------------------------
 def plot_feat_imp(model, feats, name, out_dir):
+    if plt is None:
+        return None
     if not hasattr(model, "feature_importances_"):
         return None
     imp = pd.Series(model.feature_importances_, index=feats)
@@ -387,6 +415,8 @@ def plot_feat_imp(model, feats, name, out_dir):
 # 7. Calibration reliability diagram
 # ---------------------------------------------------------------------------
 def plot_calibration(results, y_test, out_dir):
+    if plt is None:
+        return None
     fig, ax = plt.subplots(figsize=(7, 6))
     ax.plot([0, 1], [0, 1], "k--", lw=1, label="Perfect calibration")
     for r in results:
@@ -409,6 +439,8 @@ def plot_calibration(results, y_test, out_dir):
 # 8. ROC / PR curves
 # ---------------------------------------------------------------------------
 def plot_roc_pr(results, y_test, out_dir):
+    if plt is None:
+        return None
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     palette = ["#2196F3", "#FF5722", "#4CAF50"]
     for i, r in enumerate(results):
@@ -505,21 +537,27 @@ def select_primary(df):
 # ---------------------------------------------------------------------------
 # 11. Main orchestration
 # ---------------------------------------------------------------------------
-def main():
+def main(allow_synthetic_demo=False):
     log.info("=" * 65)
     log.info("  SepsisGuard AI — Model Training and Comparison Pipeline")
     log.info("=" * 65)
 
-    out_dir = "model"
-    os.makedirs(out_dir, exist_ok=True)
-
     # Data
     dp = "data/processed/aligned_cohort.parquet"
-    df = pd.read_parquet(dp) if os.path.exists(dp) else generate_demo_dataset()
+    synthetic_demo = not os.path.exists(dp)
+    if synthetic_demo and not allow_synthetic_demo:
+        raise FileNotFoundError(
+            f"Required labeled cohort is missing: {dp}. "
+            "Synthetic demo training requires --allow-synthetic-demo and is not clinical evaluation."
+        )
+    df = pd.read_parquet(dp) if not synthetic_demo else generate_demo_dataset()
+    out_dir = os.path.join("model", "synthetic_demo_candidate" if synthetic_demo else "training_candidate")
+    os.makedirs(out_dir, exist_ok=True)
 
-    NON_F = {"subject_id", "stay_id", "hour", "label",
-             "charttime", "intime", "outtime"}
-    feats = [c for c in df.columns if c not in NON_F]
+    absent_features = [name for name in FEATURES if name not in df.columns]
+    if absent_features:
+        raise ValueError(f"Training cohort is missing canonical features: {absent_features}")
+    feats = list(FEATURES)
     log.info(f"Feature set: {len(feats)} features — {feats}")
 
     # Split
@@ -567,6 +605,8 @@ def main():
         ("XGBoost",             xm,  xc,  Xv),
         ("LightGBM",            lm,  lc,  Xv),
     ]:
+        if mdl is None:
+            continue
         prob = cal.predict_proba(mdl.predict_proba(Xe)[:, 1])
         val_results.append({"name": nm, "metrics": compute_metrics(yv.values, prob, f"{nm} validation")})
     val_selection_table = build_comparison_table(
@@ -583,6 +623,8 @@ def main():
         ("XGBoost",             xm,  xc,  Xte),
         ("LightGBM",            lm,  lc,  Xte),
     ]:
+        if mdl is None:
+            continue
         raw  = mdl.predict_proba(Xe)[:, 1]
         prob = cal.predict_proba(raw)
         met  = compute_metrics(yte, prob, nm)
@@ -609,10 +651,11 @@ def main():
     joblib.dump(sc,  os.path.join(out_dir, "scaler.pkl"))
     joblib.dump(lrm, os.path.join(out_dir, "lr_model.pkl"))
     joblib.dump(lrc, os.path.join(out_dir, "lr_calibrator.pkl"))
-    xm.save_model(   os.path.join(out_dir, "xgb_model.json"))
+    xm.get_booster().save_model(os.path.join(out_dir, "xgb_model.json"))
     joblib.dump(xc,  os.path.join(out_dir, "xgb_calibrator.pkl"))
-    lm.booster_.save_model(os.path.join(out_dir, "lgb_model.txt"))
-    joblib.dump(lc,  os.path.join(out_dir, "lgb_calibrator.pkl"))
+    if lm is not None:
+        lm.booster_.save_model(os.path.join(out_dir, "lgb_model.txt"))
+        joblib.dump(lc,  os.path.join(out_dir, "lgb_calibrator.pkl"))
 
     decision = {
         "primary_model": primary,
@@ -642,4 +685,11 @@ def main():
 
 
 if __name__ == "__main__":
-    primary, cdf = main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Train an ARGUS model candidate.")
+    parser.add_argument(
+        "--allow-synthetic-demo", action="store_true",
+        help="Explicitly train a synthetic demonstration candidate; not clinical evaluation.",
+    )
+    args = parser.parse_args()
+    primary, cdf = main(allow_synthetic_demo=args.allow_synthetic_demo)

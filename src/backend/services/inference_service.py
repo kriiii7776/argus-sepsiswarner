@@ -17,17 +17,25 @@ class InferenceService:
         
         # Serialize result payload safely for JSON column storage
         json_payload = json.loads(json.dumps(result, default=str))
-        alert_payload = json.loads(json.dumps(result.get('alert', {}), default=str))
+        json_payload['vitals'] = event.model_dump(mode='json')
+        alert_payload = json.loads(json.dumps({
+            **result.get('alert', {}),
+            'patient_id': event.patient_id,
+            'session_id': event.session_id,
+            'prediction_timestamp': event.timestamp,
+        }, default=str))
         
         with Session.begin() as s:
             s.add(VitalRecord(
                 patient_id=event.patient_id,
+                session_id=event.session_id,
                 timestamp=event.timestamp,
                 payload=event.model_dump(mode='json'),
                 source=event.source
             ))
             s.add(PredictionRecord(
                 patient_id=event.patient_id,
+                session_id=event.session_id,
                 timestamp=event.timestamp,
                 risk=result['risk_probability'],
                 payload=json_payload,
@@ -36,6 +44,7 @@ class InferenceService:
             if result.get('alert', {}).get('alert_emitted'):
                 s.add(AlertRecord(
                     patient_id=event.patient_id,
+                    session_id=event.session_id,
                     timestamp=event.timestamp,
                     severity=result['alert_severity'] or 'NONE',
                     payload=alert_payload
@@ -44,6 +53,11 @@ class InferenceService:
         await broker.publish('prediction', event.patient_id, json_payload)
         if result.get('alert', {}).get('alert_emitted'):
             await broker.publish('alert', event.patient_id, alert_payload)
+            try:
+                from src.backend.services.alert_router import alert_router
+                await alert_router.route_alert(event.patient_id, alert_payload)
+            except Exception as exc:
+                log.warning("Alert routing exception: %s", exc)
             
         return result
 

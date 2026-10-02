@@ -4,18 +4,23 @@ import type { AlertSeverity, RiskLevel, SignalQuality } from '../../types';
 
 interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'gray';
+  variant?: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'gray' | 'critical' | 'warning' | 'stable' | 'default';
   size?: 'sm' | 'md';
 }
 
 export const Badge: React.FC<BadgeProps> = ({ children, variant = 'gray', size = 'sm' }) => {
   const getVariantClass = () => {
     switch (variant) {
-      case 'red': return 'badge-red';
-      case 'orange': return 'badge-orange';
+      case 'red':
+      case 'critical': return 'badge-red';
+      case 'orange':
+      case 'warning': return 'badge-orange';
       case 'yellow': return 'badge-yellow';
-      case 'green': return 'badge-green';
-      case 'blue': return 'badge-blue';
+      case 'green':
+      case 'stable': return 'badge-green';
+      case 'blue':
+      case 'default': return 'badge-blue';
+      case 'purple': return 'badge-blue';
       default: return 'badge-gray';
     }
   };

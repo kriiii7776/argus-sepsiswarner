@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Pytest / Audit / DeepEval
+.pytest_cache/
+.pytest-tmp*/
+.deepeval/
+.coverage
+htmlcov/
+.argus_*
+
+# Environment / Secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Node / Frontend Build
+node_modules/
+src/frontend/dist/
+src/frontend/build/
+src/frontend/.env
+
+# Data / SQLite / Generated Runtime DBs / Ephemeral
+*.sqlite
+*.db
+patient_registry.json
+part1/backend/patient_registry.json
+null
+
+# Wheels / Binary builds
+deployment/backend/wheels/
+
+# Logs
+*.log
+
+# Scratch
+scratch/

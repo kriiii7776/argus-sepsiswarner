@@ -5,21 +5,33 @@ import type { Patient, VitalEvent } from '../types';
 import { LoadingState, ErrorState, EmptyState } from '../components/common/FeedbackStates';
 import { Search, Users, RefreshCw } from 'lucide-react';
 
+import { useTelemetry } from '../contexts/TelemetryContext';
+
 interface Props {
   onSelectPatient: (patient_id: string) => void;
 }
 
-const MONITORED_PATIENT_IDS = ['P-ICU-001', 'P-ICU-002', 'P-ICU-003', 'P-ICU-004', 'P-ICU-005'];
+const MONITORED_PATIENT_IDS = ['PATIENT-001', 'PATIENT-002', 'PATIENT-003', 'PATIENT-004'];
 
 export const PatientsPage: React.FC<Props> = ({ onSelectPatient }) => {
+  const { patients: contextPatients, vitalsMap: contextVitalsMap } = useTelemetry();
   const [filter, setFilter] = useState<'ALL' | 'CRITICAL' | 'WARNING' | 'STABLE'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
 
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [vitalsMap, setVitalsMap] = useState<Record<string, VitalEvent>>({});
+  const [patients, setPatients] = useState<Patient[]>(contextPatients);
+  const [vitalsMap, setVitalsMap] = useState<Record<string, VitalEvent>>(contextVitalsMap);
+
+  useEffect(() => {
+    if (contextPatients && contextPatients.length > 0) {
+      setPatients(contextPatients);
+    }
+    if (contextVitalsMap) {
+      setVitalsMap(contextVitalsMap);
+    }
+  }, [contextPatients, contextVitalsMap]);
 
   useEffect(() => {
     let isSubscribed = true;
@@ -27,7 +39,10 @@ export const PatientsPage: React.FC<Props> = ({ onSelectPatient }) => {
 
     async function fetchRoster() {
       try {
-        const patientPromises = MONITORED_PATIENT_IDS.map(async (id) => {
+        const patientIds = Array.from(
+          new Set([...MONITORED_PATIENT_IDS, ...contextPatients.map((p) => p.patient_id)])
+        );
+        const patientPromises = patientIds.map(async (id) => {
           try {
             const [p, riskRes, vitalsRes] = await Promise.allSettled([
               api.getPatient(id),

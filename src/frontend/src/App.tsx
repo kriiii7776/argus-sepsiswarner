@@ -1,19 +1,26 @@
 import { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { TelemetryProvider } from './contexts/TelemetryContext';
 import { AppShell } from './components/layout/AppShell';
+import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/Dashboard';
 import { PatientsPage } from './pages/PatientsPage';
 import { PatientDetailsPage } from './pages/PatientDetailsPage';
 import { AlertsPage } from './pages/AlertsPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
+import { AdminPage } from './pages/AdminPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { api } from './services/api';
-import { wsService } from './services/websocket';
 import { useWebSocket } from './hooks/useWebSocket';
 import type { ConnectionStatus } from './types';
 
-export default function App() {
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [activePatientId, setActivePatientId] = useState<string>('P-ICU-001');
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
-  // Real-Time WebSocket Hook
+function MainAppContent() {
+  const { user, isAuthenticated } = useAuth();
+  const [currentTab, setCurrentTab] = useState<string>('dashboard');
+  const [activePatientId, setActivePatientId] = useState<string>('PATIENT-001');
+
   const { connectionState: wsState } = useWebSocket();
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
@@ -22,6 +29,19 @@ export default function App() {
     database_status: 'unknown',
     active_model: 'logistic-regression-v1'
   });
+
+  // Role routing enforcement
+  useEffect(() => {
+    if (user?.role === 'ADMIN') {
+      if (currentTab !== 'admin' && currentTab !== 'settings') {
+        setCurrentTab('admin');
+      }
+    } else if (user?.role === 'DOCTOR' || user?.role === 'NURSE') {
+      if (currentTab === 'admin') {
+        setCurrentTab('dashboard');
+      }
+    }
+  }, [user, currentTab]);
 
   useEffect(() => {
     let isMounted = true;
@@ -74,6 +94,18 @@ export default function App() {
     setCurrentTab('patient-details');
   };
 
+  const handleLoginSuccess = (role: 'ADMIN' | 'DOCTOR' | 'NURSE') => {
+    if (role === 'ADMIN') {
+      setCurrentTab('admin');
+    } else {
+      setCurrentTab('dashboard');
+    }
+  };
+
+  if (!isAuthenticated) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <AppShell
       currentTab={currentTab}
@@ -92,7 +124,9 @@ export default function App() {
       )}
 
       {currentTab === 'patient-details' && (
-        <PatientDetailsPage patientId={activePatientId} />
+        <ErrorBoundary fallbackTitle="Patient Focus UI Error" onReset={() => setCurrentTab('patients')}>
+          <PatientDetailsPage patientId={activePatientId} />
+        </ErrorBoundary>
       )}
 
       {currentTab === 'alerts' && (
@@ -100,31 +134,26 @@ export default function App() {
       )}
 
       {currentTab === 'analytics' && (
-        <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>ICU Analytics & Population Health</h3>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            Population-level sepsis incidence, mean time-to-antibiotics, and alert sensitivity metrics.
-          </p>
-        </div>
+        <AnalyticsPage />
+      )}
+
+      {currentTab === 'admin' && (
+        <AdminPage />
       )}
 
       {currentTab === 'settings' && (
-        <div className="card" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>ARGUS Integration & System Settings</h3>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-            Canonical Backend Base URL: <code style={{ fontFamily: 'var(--font-mono)' }}>{api.getBaseUrl()}</code><br />
-            WebSocket Stream URL: <code style={{ fontFamily: 'var(--font-mono)' }}>{wsService.getUrl()}</code><br />
-            WebSocket Status: <strong style={{ color: wsState === 'CONNECTED' ? 'var(--color-stable)' : 'var(--color-watch)' }}>
-              {wsState}
-            </strong><br />
-            Auth Protocol: <code style={{ fontFamily: 'var(--font-mono)' }}>Bearer Token (fake-super-secret-token)</code><br />
-            Active ML Model: <code style={{ fontFamily: 'var(--font-mono)' }}>{connectionStatus.active_model}</code><br />
-            Backend API Health: <strong style={{ color: connectionStatus.backend_connected ? 'var(--color-stable)' : 'var(--color-critical)' }}>
-              {connectionStatus.backend_connected ? 'Online (HTTP 200)' : 'Offline'}
-            </strong>
-          </p>
-        </div>
+        <SettingsPage />
       )}
     </AppShell>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <TelemetryProvider>
+        <MainAppContent />
+      </TelemetryProvider>
+    </AuthProvider>
   );
 }
