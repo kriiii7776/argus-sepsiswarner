@@ -20,11 +20,11 @@ const getInitialBaseUrl = (): string => {
   } catch {
     // Ignore in non-vite test environments
   }
-  return 'http://localhost:8000/api/v1';
+  return 'http://127.0.0.1:8000/api/v1';
 };
 
 const API_BASE_URL = getInitialBaseUrl();
-const DEFAULT_AUTH_TOKEN = 'fake-super-secret-token';
+const DEFAULT_AUTH_TOKEN = 'argus-auth-admin-001-session-token';
 
 const getInitialToken = (): string => {
   try {
@@ -199,6 +199,14 @@ export class RestApiClient {
     return this.formatPatientResponse(raw);
   }
 
+  public async getPatients(): Promise<Patient[]> {
+    const raw = await this.request<any[]>('/patients', {
+      method: 'GET'
+    }, true);
+
+    return (Array.isArray(raw) ? raw : []).map(p => this.formatPatientResponse(p));
+  }
+
   public async getPatient(patientId: string): Promise<Patient> {
     const raw = await this.request<any>(`/patients/${encodeURIComponent(patientId)}`, {
       method: 'GET'
@@ -223,6 +231,14 @@ export class RestApiClient {
       spo2: v.spo2 ?? null,
       temperature_c: v.temperature_c ?? v.temperature ?? null,
       lactate: v.lactate ?? null,
+      wbc: v.wbc ?? null,
+      platelets: v.platelets ?? null,
+      creatinine: v.creatinine ?? null,
+      bilirubin: v.bilirubin ?? null,
+      pao2_fio2: v.pao2_fio2 ?? null,
+      gcs: v.gcs ?? null,
+      urine_output: v.urine_output ?? null,
+      norepinephrine: v.norepinephrine ?? null,
       source: v.source || 'integration',
       signal_quality: v.signal_quality || 'HIGH'
     }));

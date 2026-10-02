@@ -11,8 +11,6 @@ interface Props {
   onSelectPatient: (patient_id: string) => void;
 }
 
-const MONITORED_PATIENT_IDS = ['PATIENT-001', 'PATIENT-002', 'PATIENT-003', 'PATIENT-004'];
-
 export const PatientsPage: React.FC<Props> = ({ onSelectPatient }) => {
   const { patients: contextPatients, vitalsMap: contextVitalsMap } = useTelemetry();
   const [filter, setFilter] = useState<'ALL' | 'CRITICAL' | 'WARNING' | 'STABLE'>('ALL');
@@ -39,9 +37,13 @@ export const PatientsPage: React.FC<Props> = ({ onSelectPatient }) => {
 
     async function fetchRoster() {
       try {
+        const fetchedList = await api.getPatients().catch(() => []);
         const patientIds = Array.from(
-          new Set([...MONITORED_PATIENT_IDS, ...contextPatients.map((p) => p.patient_id)])
+          new Set([...fetchedList.map((p) => p.patient_id), ...contextPatients.map((p) => p.patient_id)])
         );
+
+        if (patientIds.length === 0) return;
+
         const patientPromises = patientIds.map(async (id) => {
           try {
             const [p, riskRes, vitalsRes] = await Promise.allSettled([
@@ -50,17 +52,11 @@ export const PatientsPage: React.FC<Props> = ({ onSelectPatient }) => {
               api.getVitals(id)
             ]);
 
-            const patientObj: Patient = p.status === 'fulfilled' ? p.value : {
-              patient_id: id,
-              name: `Patient ${id}`,
-              bed: `Bed ${id.slice(-3)}`,
-              age: 50,
-              source_system: 'local',
-              admitted_at: new Date().toISOString(),
-              current_risk_score: 0,
-              risk_level: 'STABLE',
-              risk_trend: 'stable'
-            };
+            if (p.status !== 'fulfilled') {
+              return null;
+            }
+
+            const patientObj: Patient = p.value;
 
             if (riskRes.status === 'fulfilled') {
               const score = riskRes.value.risk_score <= 1.0 ? riskRes.value.risk_score * 100 : riskRes.value.risk_score;

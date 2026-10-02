@@ -148,7 +148,7 @@ class Part1WSBridge:
             return False
 
         msg_type = payload.get("message_type")
-        if msg_type != "vital_update":
+        if msg_type not in ("vital_update", "clinical_update"):
             logger.debug("ARGUS Part1 bridge ignoring message_type '%s'", msg_type)
             return False
 

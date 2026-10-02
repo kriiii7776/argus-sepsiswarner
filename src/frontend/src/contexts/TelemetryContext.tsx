@@ -35,8 +35,6 @@ interface TelemetryContextType {
 
 const TelemetryContext = createContext<TelemetryContextType | undefined>(undefined);
 
-const DEFAULT_PATIENTS = ['PATIENT-001', 'PATIENT-002', 'PATIENT-003', 'PATIENT-004'];
-
 export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [patientsMap, setPatientsMap] = useState<Record<string, Patient>>({});
   const [vitalsMap, setVitalsMap] = useState<Record<string, VitalEvent>>({});
@@ -55,10 +53,13 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     async function loadInitialData() {
       try {
+        const fetchedPatients = await api.getPatients().catch(() => []);
+        if (!isSubscribed) return;
+
         const results = await Promise.allSettled(
-          DEFAULT_PATIENTS.map(async (pid) => {
-            const [pRes, vRes, rRes, tRes, aRes] = await Promise.allSettled([
-              api.getPatient(pid),
+          fetchedPatients.map(async (pObj) => {
+            const pid = pObj.patient_id;
+            const [vRes, rRes, tRes, aRes] = await Promise.allSettled([
               api.getVitals(pid),
               api.getRisk(pid),
               api.getTrajectory(pid),
@@ -67,7 +68,7 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
             return {
               pid,
-              patient: pRes.status === 'fulfilled' ? pRes.value : null,
+              patient: pObj,
               vitals: vRes.status === 'fulfilled' && vRes.value.length > 0 ? vRes.value[vRes.value.length - 1] : null,
               risk: rRes.status === 'fulfilled' ? rRes.value : null,
               trajectory: tRes.status === 'fulfilled' ? tRes.value.points : [],
@@ -88,17 +89,7 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             const d = res.value;
             const pid = d.pid;
 
-            const pObj: Patient = d.patient || {
-              patient_id: pid,
-              name: `Patient ${pid}`,
-              bed: `Bed ${pid.slice(-3)}`,
-              age: 50,
-              source_system: 'local',
-              admitted_at: new Date().toISOString(),
-              current_risk_score: d.risk ? d.risk.risk_score : 0,
-              risk_level: d.risk ? (d.risk.risk_level as Patient['risk_level']) : 'LOW',
-              risk_trend: 'stable'
-            };
+            const pObj: Patient = { ...d.patient };
 
             if (d.risk) {
               pObj.current_risk_score = d.risk.risk_score;
@@ -305,7 +296,6 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const allPatientIds = Array.from(
     new Set([
-      ...DEFAULT_PATIENTS,
       ...Object.keys(patientsMap),
       ...Object.keys(vitalsMap),
       ...Object.keys(predictionsMap),
@@ -315,6 +305,7 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const patientsList: Patient[] = allPatientIds.map((pid) => {
     if (patientsMap[pid]) return patientsMap[pid];
+    const risk = predictionsMap[pid]?.risk_probability ?? 0;
     return {
       patient_id: pid,
       name: pid.startsWith('MIMIC') ? pid : `Patient ${pid}`,
@@ -322,8 +313,8 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       age: 50,
       source_system: pid.startsWith('MIMIC') ? 'MIMIC-IV' : 'local',
       admitted_at: new Date().toISOString(),
-      current_risk_score: 5,
-      risk_level: 'LOW' as Patient['risk_level'],
+      current_risk_score: risk,
+      risk_level: risk >= 0.8 ? 'CRITICAL' : risk >= 0.5 ? 'WARNING' : risk >= 0.3 ? 'STABLE' : 'LOW',
       risk_trend: 'stable' as const
     };
   });

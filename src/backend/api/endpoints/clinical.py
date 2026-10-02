@@ -70,7 +70,14 @@ def login_user(req: LoginRequest):
         raise HTTPException(status_code=401, detail="Invalid username or role identity.")
 
     user_id, name, role, unit = match
-    assigned_patients = alert_router.get_assigned_patients_for_user(user_id) if role != 'ADMIN' else ['PATIENT-001', 'PATIENT-002', 'PATIENT-003', 'PATIENT-004']
+    if role == 'ADMIN':
+        with Session() as s:
+            patients = s.query(PatientRecord.patient_id).all()
+            assigned_patients = [p.patient_id for p in patients]
+            if not assigned_patients:
+                assigned_patients = ['PATIENT-001', 'PATIENT-002', 'PATIENT-003', 'PATIENT-004']
+    else:
+        assigned_patients = alert_router.get_assigned_patients_for_user(user_id)
 
     return LoginResponse(
         access_token=f"argus-auth-{user_id.lower()}-session-token",

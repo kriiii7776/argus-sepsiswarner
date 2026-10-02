@@ -167,6 +167,10 @@ class NotificationService {
     }
   }
 
+  void clearPatientNotification(String patientId) {
+    _lastNotifiedSeverity.remove(patientId);
+  }
+
   void clearHistory() {
     _lastNotifiedSeverity.clear();
   }

@@ -112,7 +112,10 @@ class AppState extends ChangeNotifier {
       myPatients.where((p) => p.priorityRank == AlertSeverityRank.yellowWatch).toList();
 
   List<PredictionResponse> get activeAlerts {
-    final list = _activeAlertsMap.values.where((a) => !isAlertAcknowledged(a.patientId)).toList();
+    final list = _activeAlertsMap.values.where((a) {
+      final alertId = a.alertId;
+      return !_acknowledgedAlerts.contains(alertId);
+    }).toList();
     list.sort((a, b) {
       final rankA = AlertSeverityRank.fromString(a.alertSeverity, a.recommendedClinicalReviewLevel).rank;
       final rankB = AlertSeverityRank.fromString(b.alertSeverity, b.recommendedClinicalReviewLevel).rank;
@@ -128,12 +131,14 @@ class AppState extends ChangeNotifier {
     return activeAlerts.where((a) => assigned.contains(a.patientId)).toList();
   }
 
-  bool isAlertAcknowledged(String patientId) {
-    return _acknowledgedAlerts.contains(patientId);
+  bool isAlertAcknowledged(String alertIdOrPatientId) {
+    return _acknowledgedAlerts.contains(alertIdOrPatientId);
   }
 
-  void acknowledgeAlert(String patientId) {
-    _acknowledgedAlerts.add(patientId);
+  void acknowledgeAlert(String alertIdOrPatientId, {String? patientId}) {
+    _acknowledgedAlerts.add(alertIdOrPatientId);
+    final targetPid = patientId ?? alertIdOrPatientId.replaceFirst(RegExp(r'^alert-'), '').split('-')[0];
+    NotificationService.instance.clearPatientNotification(targetPid);
     notifyListeners();
   }
 

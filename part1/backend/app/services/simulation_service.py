@@ -193,7 +193,7 @@ class SimulationService:
                     self._generators.pop(sid, None)
 
                 for patient in patient_registry.list_patients():
-                    if self.source_mode == "REPLAY":
+                    if self.source_mode == "REPLAY" or patient.patient_id.startswith("MIMIC-"):
                         vital_message = self._historical_replay.vital_update(patient.patient_id, replay_tick)
                     else:
                         if patient.patient_id not in self._generators:
@@ -218,7 +218,7 @@ class SimulationService:
                     delivered = await stream_manager.broadcast(vital_message, session_id=vital_message.session_id)
                     logger.debug("Broadcast result: delivered_count=%d", delivered)
 
-                    if self.source_mode == "REPLAY" and self._last_clinical_update_second != replay_tick:
+                    if (self.source_mode == "REPLAY" or patient.patient_id.startswith("MIMIC-")) and self._last_clinical_update_second != replay_tick:
                         clinical_message = self._historical_replay.clinical_update(patient.patient_id, replay_tick)
                         await stream_manager.broadcast(clinical_message, session_id=clinical_message.session_id)
                 self._last_clinical_update_second = replay_tick

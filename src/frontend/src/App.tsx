@@ -19,7 +19,13 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 function MainAppContent() {
   const { user, isAuthenticated } = useAuth();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
-  const [activePatientId, setActivePatientId] = useState<string>('PATIENT-001');
+  const [activePatientId, setActivePatientId] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('argus_active_patient_id') || 'MIMIC-38197705';
+    } catch {
+      return 'MIMIC-38197705';
+    }
+  });
 
   const { connectionState: wsState } = useWebSocket();
 
@@ -90,6 +96,11 @@ function MainAppContent() {
   }, [wsState]);
 
   const handleSelectPatient = (id: string) => {
+    try {
+      sessionStorage.setItem('argus_active_patient_id', id);
+    } catch {
+      // Ignore sessionStorage error if unavailable
+    }
     setActivePatientId(id);
     setCurrentTab('patient-details');
   };
@@ -106,14 +117,17 @@ function MainAppContent() {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const patientDisplayName = activePatientId.startsWith('MIMIC') ? activePatientId : `Patient ${activePatientId}`;
+  const patientBedName = activePatientId.startsWith('MIMIC') ? `ICU-${activePatientId.slice(-4)}` : `Bed ${activePatientId.slice(-3)}`;
+
   return (
     <AppShell
       currentTab={currentTab}
       onNavigate={setCurrentTab}
       status={connectionStatus}
       wsState={wsState}
-      activePatientName={`Patient ${activePatientId}`}
-      activeBed={`Bed ${activePatientId.slice(-3)}`}
+      activePatientName={patientDisplayName}
+      activeBed={patientBedName}
     >
       {currentTab === 'dashboard' && (
         <DashboardPage onSelectPatient={handleSelectPatient} />

@@ -23,38 +23,56 @@ from app.api.v1.health import get_health, HealthResponse
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.PROJECT_NAME} v{settings.VERSION} [{settings.ENVIRONMENT}]")
     
-    # Auto-seed PATIENT-001 if missing
+    # Auto-seed canonical demo patients (PATIENT-001..PATIENT-004) if missing
     from app.services.patient_registry import patient_registry
     from app.schemas.patient import PatientProfileType, PatientSex
+    from app.services.simulation_service import simulation_service
+    from app.simulation.scenario_engine import ScenarioName
 
-    demo_patient = patient_registry.get_patient(settings.DEMO_PATIENT_ID)
-    if not demo_patient:
-        try:
-            demo_patient = patient_registry.create_patient(
-                patient_id=settings.DEMO_PATIENT_ID,
-                session_id="LIVE-TEST-001",
-                age=65,
-                sex=PatientSex.MALE,
-                profile_type=PatientProfileType.ICU_BASELINE,
-                seed=42,
-            )
-            logger.info(f"Auto-seeded demo patient: {settings.DEMO_PATIENT_ID}")
-        except Exception as e:
-            logger.warning(f"Demo patient creation skipped: {e}")
+    canonical_specs = [
+        ("PATIENT-001", "LIVE-TEST-001", 65, PatientSex.MALE, PatientProfileType.ICU_BASELINE, ScenarioName.RAPID_DETERIORATION, 42),
+        ("PATIENT-002", "LIVE-TEST-002", 58, PatientSex.FEMALE, PatientProfileType.ICU_BASELINE, ScenarioName.STABLE, 101),
+        ("PATIENT-003", "LIVE-TEST-003", 72, PatientSex.MALE, PatientProfileType.GERIATRIC, ScenarioName.GRADUAL_DETERIORATION, 202),
+        ("PATIENT-004", "LIVE-TEST-004", 45, PatientSex.FEMALE, PatientProfileType.STANDARD, ScenarioName.STABLE, 303),
+    ]
+
+    for pid, sid, age, sex, profile, scenario, seed in canonical_specs:
+        patient = patient_registry.get_patient(pid)
+        if not patient:
+            try:
+                patient_registry.create_patient(
+                    patient_id=pid,
+                    session_id=sid,
+                    age=age,
+                    sex=sex,
+                    profile_type=profile,
+                    seed=seed,
+                )
+                logger.info(f"Auto-seeded demo patient: {pid}")
+            except Exception as e:
+                logger.warning(f"Demo patient creation skipped for {pid}: {e}")
+
+    try:
+        mimic_patients = simulation_service._historical_replay.load()
+        for mp in mimic_patients:
+            if not patient_registry.get_patient(mp.patient_id):
+                patient_registry.register_patient(mp)
+        logger.info(f"Auto-registered {len(mimic_patients)} MIMIC historical replay patients")
+    except Exception as e:
+        logger.warning(f"Failed to auto-register MIMIC replay patients: {e}")
 
     if settings.DEMO_MODE:
-        from app.services.simulation_service import simulation_service
-        from app.simulation.scenario_engine import ScenarioName
         try:
-            simulation_service.set_patient_scenario(settings.DEMO_PATIENT_ID, ScenarioName.RAPID_DETERIORATION)
-            simulation_service.start_simulation(
-                patient_id=settings.DEMO_PATIENT_ID,
-                session_id="LIVE-TEST-001",
-                speed_factor=settings.DEMO_SPEED_FACTOR,
-            )
-            logger.info(f"DEMO_MODE active: Auto-started simulation for {settings.DEMO_PATIENT_ID} ({settings.DEMO_SPEED_FACTOR}x speed)")
+            for pid, sid, _, _, _, scenario, _ in canonical_specs:
+                simulation_service.set_patient_scenario(pid, scenario)
+                simulation_service.start_simulation(
+                    patient_id=pid,
+                    session_id=sid,
+                    speed_factor=settings.DEMO_SPEED_FACTOR,
+                )
+            logger.info(f"DEMO_MODE active: Auto-started simulations for canonical patients ({settings.DEMO_SPEED_FACTOR}x speed)")
         except Exception as e:
-            logger.error(f"Failed to auto-start DEMO simulation: {e}")
+            logger.error(f"Failed to auto-start DEMO simulations: {e}")
 
     yield
     logger.info(f"Shutting down {settings.PROJECT_NAME}")

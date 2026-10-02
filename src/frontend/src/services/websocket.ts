@@ -26,13 +26,13 @@ function deriveWsUrl(): string {
       return import.meta.env.VITE_WS_BASE_URL;
     }
     const apiBase = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) 
-      || 'http://localhost:8000/api/v1';
+      || 'http://127.0.0.1:8000/api/v1';
 
     const wsProtocol = apiBase.startsWith('https') ? 'wss://' : 'ws://';
     const cleanPath = apiBase.replace(/^https?:\/\//, '').replace(/\/+$/, '');
     return `${wsProtocol}${cleanPath}/ws/stream`;
   } catch {
-    return 'ws://localhost:8000/api/v1/ws/stream';
+    return 'ws://127.0.0.1:8000/api/v1/ws/stream';
   }
 }
 

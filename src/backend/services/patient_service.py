@@ -92,4 +92,21 @@ class PatientService:
         cls.require(patient_id)
         return cls.repo.alerts(patient_id)
 
+    @classmethod
+    def list_patients(cls) -> list[Patient]:
+        from src.backend.db.store import Session, PatientRecord
+        with Session() as s:
+            rows = s.query(PatientRecord).all()
+            result = []
+            for r in rows:
+                default_name = r.patient_id if r.patient_id.startswith("MIMIC") else f"Patient {r.patient_id}"
+                cached_name = cls._names_cache.get(r.patient_id, default_name)
+                result.append(Patient(
+                    id=r.patient_id,
+                    name=cached_name,
+                    age=50,
+                    medical_history=[]
+                ))
+            return result
+
 patient_service = PatientService()

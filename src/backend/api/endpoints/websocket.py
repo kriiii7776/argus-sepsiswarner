@@ -87,7 +87,7 @@ async def websocket_stream(ws: WebSocket, user_id: str | None = None):
         while True:
             data = await ws.receive_text()
             await process_ws_message(ws, data, is_stream_endpoint=True)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError, Exception):
         broker.subscribers.discard(ws)
 
 
@@ -100,6 +100,6 @@ async def websocket_endpoint(ws: WebSocket, user_id: str | None = None):
         while True:
             data = await ws.receive_text()
             await process_ws_message(ws, data, is_stream_endpoint=False)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError, Exception):
         broker.subscribers.discard(ws)
 

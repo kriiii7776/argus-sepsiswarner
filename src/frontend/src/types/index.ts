@@ -39,6 +39,13 @@ export interface VitalEvent {
   temperature_c: number | null;
   lactate: number | null;
   wbc?: number | null;
+  platelets?: number | null;
+  creatinine?: number | null;
+  bilirubin?: number | null;
+  pao2_fio2?: number | null;
+  gcs?: number | null;
+  urine_output?: number | null;
+  norepinephrine?: number | null;
   source: 'simulator' | 'integration';
   signal_quality?: SignalQuality;
 }

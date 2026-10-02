@@ -6,6 +6,10 @@ from src.backend.core.security import get_current_user
 
 router = APIRouter()
 
+@router.get("/patients")
+def list_patients(current_user=Depends(get_current_user)):
+    return patient_service.list_patients()
+
 @router.post("/patients", response_model=Patient)
 def create_patient(patient: PatientCreate, current_user=Depends(get_current_user)):
     return patient_service.create_patient(patient)

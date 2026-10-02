@@ -121,20 +121,13 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
           pObj = patientRes.value;
         } else {
           const err = patientRes.reason as ApiError;
-          if (err.status === 401 || err.status === 403) {
+          if (err && (err.status === 401 || err.status === 403)) {
             throw new Error(`Authentication failure (HTTP ${err.status}): ${err.message}`);
           }
-          pObj = {
-            patient_id: patientId,
-            name: `Patient ${patientId}`,
-            bed: `Bed ${patientId.slice(-3)}`,
-            age: 50,
-            source_system: 'local',
-            admitted_at: new Date().toISOString(),
-            current_risk_score: 0,
-            risk_level: 'STABLE',
-            risk_trend: 'stable'
-          };
+          if (err && err.status === 404) {
+            throw new Error(`Patient "${patientId}" not found in database.`);
+          }
+          throw new Error(err?.message || `Failed to fetch patient "${patientId}".`);
         }
 
         if (riskRes.status === 'fulfilled') {
@@ -273,6 +266,24 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
     lactate: v.lactate || 0
   })).reverse();
 
+  const getLatestLabValue = (field: keyof VitalEvent) => {
+    for (const v of vitalHistory) {
+      if (v[field] != null) {
+        return { value: v[field], timestamp: v.timestamp };
+      }
+    }
+    return null;
+  };
+
+  const latestLactate = getLatestLabValue('lactate');
+  const latestPlatelets = getLatestLabValue('platelets');
+  const latestCreatinine = getLatestLabValue('creatinine');
+  const latestBilirubin = getLatestLabValue('bilirubin');
+  const latestPao2Fio2 = getLatestLabValue('pao2_fio2');
+  const latestGcs = getLatestLabValue('gcs');
+  const latestUrineOutput = getLatestLabValue('urine_output');
+  const latestNorepinephrine = getLatestLabValue('norepinephrine');
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Patient Header Banner */}
@@ -294,7 +305,7 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
               )}
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
-              ID: {patient.patient_id} • Age: {patient.age} yrs • Sex: {patient.sex_at_birth || 'Unspecified'} • Source: {patient.source_system} • History: {patient.medical_history?.length ? patient.medical_history.join(', ') : 'None documented'}
+              ID: {patient.patient_id} • Session: {patient.patient_id} • Source: {patient.source_system} • Model: <code style={{ fontFamily: 'var(--font-mono)' }}>logistic-regression-v1</code> • Latest Event: {currentVital.timestamp ? new Date(currentVital.timestamp).toLocaleTimeString() : 'N/A'}
             </div>
           </div>
         </div>
@@ -343,6 +354,16 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
             </div>
             <div className="col-span-4">
               <VitalCard
+                label="Blood Pressure (Sys / Dia)"
+                value={currentVital.bp_systolic != null && currentVital.bp_diastolic != null ? `${Math.round(currentVital.bp_systolic)}/${Math.round(currentVital.bp_diastolic)}` : null}
+                unit="mmHg"
+                icon={<Activity size={16} color="var(--color-info)" />}
+                statusVariant={currentVital.bp_systolic && currentVital.bp_systolic < 90 ? 'critical' : 'normal'}
+                signalQuality={currentVital.signal_quality}
+              />
+            </div>
+            <div className="col-span-4">
+              <VitalCard
                 label="Temperature"
                 value={currentVital.temperature_c}
                 unit="°C"
@@ -371,16 +392,6 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
                 signalQuality={currentVital.signal_quality}
               />
             </div>
-            <div className="col-span-4">
-              <VitalCard
-                label="Serum Lactate"
-                value={currentVital.lactate}
-                unit="mmol/L"
-                icon={<Droplets size={16} color="var(--color-critical)" />}
-                statusVariant={currentVital.lactate && currentVital.lactate > 2.0 ? 'critical' : 'normal'}
-                signalQuality={currentVital.signal_quality}
-              />
-            </div>
           </div>
         </div>
       </div>
@@ -390,7 +401,7 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
         <div className="card col-span-8">
           <div className="card-header">
             <h3 className="card-title">
-              <Activity size={18} color="var(--color-info)" /> Deterioration Risk Trajectory
+              <Activity size={18} color="var(--color-info)" /> Deterioration Risk Trajectory (31-Feature Window)
             </h3>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
               Trajectory Points: {trajectoryPoints.length}
@@ -411,6 +422,115 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
         </div>
       </div>
 
+      {/* Section F — Clinical & Laboratory Context */}
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">
+            <Droplets size={18} color="var(--color-info)" /> Clinical & Laboratory Context
+          </h3>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Recorded MIMIC-IV / ICU EHR Lab Observations
+          </span>
+        </div>
+        <div className="grid grid-cols-12" style={{ marginTop: '0.75rem', gap: '0.75rem' }}>
+          <div className="col-span-3" style={{ padding: '0.6rem 0.85rem', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Serum Lactate</span>
+            <strong style={{ fontSize: '1rem', color: latestLactate?.value && Number(latestLactate.value) > 2.0 ? 'var(--color-critical)' : 'var(--text-primary)' }}>
+              {latestLactate ? `${latestLactate.value} mmol/L` : 'No recorded value'}
+            </strong>
+            {latestLactate && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem' }}>
+                Observed: {new Date(latestLactate.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+
+          <div className="col-span-3" style={{ padding: '0.6rem 0.85rem', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Platelets</span>
+            <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>
+              {latestPlatelets ? `${latestPlatelets.value} k/uL` : 'No recorded value'}
+            </strong>
+            {latestPlatelets && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem' }}>
+                Observed: {new Date(latestPlatelets.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+
+          <div className="col-span-3" style={{ padding: '0.6rem 0.85rem', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Serum Creatinine</span>
+            <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>
+              {latestCreatinine ? `${latestCreatinine.value} mg/dL` : 'No recorded value'}
+            </strong>
+            {latestCreatinine && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem' }}>
+                Observed: {new Date(latestCreatinine.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+
+          <div className="col-span-3" style={{ padding: '0.6rem 0.85rem', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Total Bilirubin</span>
+            <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>
+              {latestBilirubin ? `${latestBilirubin.value} mg/dL` : 'No recorded value'}
+            </strong>
+            {latestBilirubin && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem' }}>
+                Observed: {new Date(latestBilirubin.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+
+          <div className="col-span-3" style={{ padding: '0.6rem 0.85rem', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>PaO2 / FiO2 Ratio</span>
+            <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>
+              {latestPao2Fio2 ? `${latestPao2Fio2.value}` : 'No recorded value'}
+            </strong>
+            {latestPao2Fio2 && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem' }}>
+                Observed: {new Date(latestPao2Fio2.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+
+          <div className="col-span-3" style={{ padding: '0.6rem 0.85rem', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Glasgow Coma Scale (GCS)</span>
+            <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>
+              {latestGcs ? `${latestGcs.value}` : 'No recorded value'}
+            </strong>
+            {latestGcs && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem' }}>
+                Observed: {new Date(latestGcs.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+
+          <div className="col-span-3" style={{ padding: '0.6rem 0.85rem', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Urine Output (24h)</span>
+            <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>
+              {latestUrineOutput ? `${latestUrineOutput.value} mL` : 'No recorded value'}
+            </strong>
+            {latestUrineOutput && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem' }}>
+                Observed: {new Date(latestUrineOutput.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+
+          <div className="col-span-3" style={{ padding: '0.6rem 0.85rem', backgroundColor: 'var(--bg-app)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Norepinephrine Infusion</span>
+            <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>
+              {latestNorepinephrine ? `${latestNorepinephrine.value} mcg/kg/min` : 'No recorded value'}
+            </strong>
+            {latestNorepinephrine && (
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem' }}>
+                Observed: {new Date(latestNorepinephrine.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Vital Trends & Alert History */}
       <div className="grid grid-cols-12">
         <div className="col-span-8">
@@ -427,7 +547,7 @@ export const PatientDetailsPage: React.FC<Props> = ({ patientId }) => {
           <div className="card">
             <div className="card-header">
               <h3 className="card-title">
-                <ShieldAlert size={18} color="var(--color-critical)" /> Patient Active Alerts
+                <ShieldAlert size={18} color="var(--color-critical)" /> Active Alerts & Alert History
               </h3>
             </div>
             {alerts.length > 0 ? (

@@ -52,10 +52,19 @@ class VitalEvent(BaseModel):
     timestamp: datetime
     heart_rate: float | None = Field(default=None, ge=0, le=400)
     map: float | None = Field(default=None, ge=0, le=300)
+    bp_systolic: float | None = Field(default=None, ge=0, le=300)
+    bp_diastolic: float | None = Field(default=None, ge=0, le=300)
     resp_rate: float | None = Field(default=None, ge=0, le=100)
     spo2: float | None = Field(default=None, ge=0, le=100)
     temperature_c: float | None = Field(default=None, ge=20, le=50)
     lactate: float | None = Field(default=None, ge=0, le=30)
+    platelets: float | None = Field(default=None, ge=0, le=2000)
+    creatinine: float | None = Field(default=None, ge=0, le=50)
+    bilirubin: float | None = Field(default=None, ge=0, le=100)
+    pao2_fio2_ratio: float | None = Field(default=None, ge=0, le=1000)
+    glasgow_coma_scale: float | None = Field(default=None, ge=3, le=15)
+    urine_output_6h: float | None = Field(default=None, ge=0, le=10000)
+    norepinephrine_dose: float | None = Field(default=None, ge=0, le=500)
     source: Literal['simulator', 'integration'] = 'simulator'
 
     @model_validator(mode='before')

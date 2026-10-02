@@ -37,6 +37,13 @@ class PredictionResponse {
     required this.isDemoModel,
   });
 
+  String get alertId {
+    if (alert != null && alert!['alert_id'] != null) {
+      return alert!['alert_id'].toString();
+    }
+    return 'alert-$patientId-${predictionTimestamp.millisecondsSinceEpoch ~/ 1000}';
+  }
+
   factory PredictionResponse.fromJson(Map<String, dynamic> json, {String? envelopePatientId}) {
     DateTime parsedTs;
     if (json['prediction_timestamp'] != null) {
