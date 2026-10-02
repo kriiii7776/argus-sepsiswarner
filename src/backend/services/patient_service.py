@@ -1,35 +1,112 @@
-from src.backend.schemas.schemas import Patient, PatientCreate, Vital
-from src.backend.core.exceptions import NotFoundException
 import uuid
-
-# Mock DB
-patients_db = {}
-vitals_db = {}
+from datetime import datetime, timezone
+from fastapi import HTTPException
+from src.backend.schemas.schemas import PatientCreate, Patient, Vital
+from src.backend.db.repositories import patient_repository
+from src.backend.core.exceptions import NotFoundException
 
 class PatientService:
-    @staticmethod
-    def create_patient(patient_in: PatientCreate) -> Patient:
-        patient_id = str(uuid.uuid4())
-        patient = Patient(id=patient_id, **patient_in.model_dump())
-        patients_db[patient_id] = patient
-        vitals_db[patient_id] = []
-        return patient
+    repo = patient_repository
+    _names_cache: dict[str, str] = {}
 
-    @staticmethod
-    def get_patient(patient_id: str) -> Patient:
-        if patient_id not in patients_db:
-            raise NotFoundException("Patient not found")
-        return patients_db[patient_id]
+    @classmethod
+    def create_patient(cls, payload: PatientCreate) -> Patient:
+        p_id = getattr(payload, 'patient_id', None) or str(uuid.uuid4())
+        name = getattr(payload, 'name', None) or f"Patient {p_id[:8]}"
+        age = getattr(payload, 'age', 50) if getattr(payload, 'age', 50) is not None else 50
+        history = getattr(payload, 'medical_history', []) or []
+        
+        cls._names_cache[p_id] = name
 
-    @staticmethod
-    def get_vitals(patient_id: str) -> list[Vital]:
-        if patient_id not in patients_db:
-            raise NotFoundException("Patient not found")
-        return vitals_db.get(patient_id, [])
+        existing = cls.repo.get(p_id)
+        if not existing:
+            cls.repo.create({
+                "patient_id": p_id,
+                "source_system": getattr(payload, 'source_system', 'local') or 'local',
+                "sex_at_birth": getattr(payload, 'sex_at_birth', None),
+                "birth_year": getattr(payload, 'birth_year', None),
+                "created_at": datetime.now(timezone.utc)
+            })
+        
+        return Patient(
+            id=p_id,
+            name=name,
+            age=age,
+            medical_history=history
+        )
 
-    @staticmethod
-    def get_trajectory(patient_id: str):
-        # Mock trajectory
-        if patient_id not in patients_db:
-            raise NotFoundException("Patient not found")
-        return {"patient_id": patient_id, "trajectory": ["stable", "improving"]}
+    @classmethod
+    def require(cls, patient_id: str):
+        row = cls.repo.get(patient_id)
+        if not row:
+            row = cls.repo.create({
+                "patient_id": patient_id,
+                "source_system": 'local',
+                "created_at": datetime.now(timezone.utc)
+            })
+        return row
+
+    @classmethod
+    def get_patient(cls, patient_id: str) -> Patient:
+        row = cls.repo.get(patient_id)
+        if not row:
+            raise NotFoundException(f"Patient {patient_id} not found")
+        default_name = row.patient_id if row.patient_id.startswith("MIMIC") else f"Patient {row.patient_id}"
+        cached_name = cls._names_cache.get(row.patient_id, default_name)
+        return Patient(
+            id=row.patient_id,
+            name=cached_name,
+            age=50,
+            medical_history=[]
+        )
+
+    @classmethod
+    def get_vitals(cls, patient_id: str):
+        cls.require(patient_id)
+        rows = cls.repo.vitals(patient_id)
+        return [r.payload for r in reversed(rows)]
+
+    @classmethod
+    def get_trajectory(cls, patient_id: str):
+        cls.require(patient_id)
+        rows = list(reversed(cls.repo.predictions(patient_id)))
+        return {
+            "patient_id": patient_id,
+            "points": [
+                {
+                    "timestamp": r.timestamp,
+                    "risk_probability": r.risk,
+                    "alert_severity": r.payload.get("alert_severity") if isinstance(r.payload, dict) else None
+                }
+                for r in rows
+            ]
+        }
+
+    @classmethod
+    def get_predictions(cls, patient_id: str):
+        cls.require(patient_id)
+        return cls.repo.predictions(patient_id)
+
+    @classmethod
+    def get_alerts(cls, patient_id: str):
+        cls.require(patient_id)
+        return cls.repo.alerts(patient_id)
+
+    @classmethod
+    def list_patients(cls) -> list[Patient]:
+        from src.backend.db.store import Session, PatientRecord
+        with Session() as s:
+            rows = s.query(PatientRecord).all()
+            result = []
+            for r in rows:
+                default_name = r.patient_id if r.patient_id.startswith("MIMIC") else f"Patient {r.patient_id}"
+                cached_name = cls._names_cache.get(r.patient_id, default_name)
+                result.append(Patient(
+                    id=r.patient_id,
+                    name=cached_name,
+                    age=50,
+                    medical_history=[]
+                ))
+            return result
+
+patient_service = PatientService()

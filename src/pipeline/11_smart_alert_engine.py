@@ -74,32 +74,55 @@ class SmartAlertEngine:
         now = pd.Timestamp(event['timestamp'])
         risk = float(event['risk_probability'])
         candidate, reasons, factors, review = self._candidate(event)
-        if risk >= self.policy.yellow_risk: state.consecutive_risk_windows += 1
-        else: state.consecutive_risk_windows = 0
+
+        # Timestamp-based persistence tracking for elevated risk
+        if risk >= self.policy.yellow_risk:
+            if getattr(state, 'risk_started_at', None) is None:
+                state.risk_started_at = now
+            elapsed_hours = max(0.0, (now - pd.Timestamp(state.risk_started_at)).total_seconds() / 3600.0)
+            state.consecutive_risk_windows = max(1, int(elapsed_hours) + 1)
+        else:
+            state.risk_started_at = None
+            state.consecutive_risk_windows = 0
+
         emitted, suppressed_reason = False, None
         current = state.severity
+
         # Hysteresis: escalation is immediate for RED or sustained for lower
-        # bands; de-escalation requires consecutive windows below the band.
+        # bands; de-escalation requires consecutive clinical hours below the band.
         if RANK[candidate] > RANK[current]:
+            state.below_started_at = None
             state.below_current_windows = 0
             if candidate == RED or state.consecutive_risk_windows >= self.policy.escalation_windows:
                 state.severity, state.started_at, emitted = candidate, now, True
-            else: suppressed_reason = 'awaiting persistence before escalation'
+            else:
+                suppressed_reason = 'awaiting persistence before escalation'
         elif candidate and RANK[candidate] == RANK[current]:
+            state.below_started_at = None
             state.below_current_windows = 0
             interval = self.policy.red_repeat_hours if candidate == RED else self.policy.repeat_hours
-            if state.last_emitted_at is None or now - state.last_emitted_at >= pd.Timedelta(hours=interval): emitted = True
-            else: suppressed_reason = 'duplicate within repeat interval'
+            if state.last_emitted_at is None or (now - pd.Timestamp(state.last_emitted_at)) >= pd.Timedelta(hours=interval):
+                emitted = True
+            else:
+                suppressed_reason = 'duplicate within repeat interval'
         elif RANK[candidate] < RANK[current]:
-            # Require a sustained drop below current band before closing/downgrading.
-            state.below_current_windows += 1
+            # Require a sustained time drop below current band before closing/downgrading.
+            if getattr(state, 'below_started_at', None) is None:
+                state.below_started_at = now
+            elapsed_below_hours = max(0.0, (now - pd.Timestamp(state.below_started_at)).total_seconds() / 3600.0)
+            state.below_current_windows = max(1, int(elapsed_below_hours) + 1)
+
             if state.below_current_windows >= self.policy.deescalation_windows:
                 state.severity, state.started_at, emitted = candidate, (now if candidate else None), bool(candidate)
+                state.below_started_at = None
                 state.below_current_windows = 0
-            else: suppressed_reason = 'hysteresis hold during improvement'
+            else:
+                suppressed_reason = 'hysteresis hold during improvement'
         else:
             suppressed_reason = 'risk below watch threshold'
+            state.below_started_at = None
             state.below_current_windows = 0
+
         if emitted:
             state.last_emitted_at = now
             state.alert_history.append({'timestamp': now, 'severity': state.severity})
@@ -107,7 +130,7 @@ class SmartAlertEngine:
         return {'alert_emitted': emitted, 'alert_severity': state.severity if emitted else candidate,
                 'active_severity': state.severity, 'reason': reasons, 'contributing_factors': factors,
                 'trend': {'risk_trajectory_per_hour': event.get('risk_trajectory_per_hour', 0.),
-                          'persistent_windows': event.get('persistent_windows', 0)},
+                          'persistent_windows': state.consecutive_risk_windows},
                 'confidence': event.get('confidence', 'LOW'), 'signal_quality': event.get('signal_quality', 'LOW'),
                 'timestamp': str(now), 'recommended_clinical_review_level': review,
                 'suppression_reason': suppressed_reason, 'state': state}, state

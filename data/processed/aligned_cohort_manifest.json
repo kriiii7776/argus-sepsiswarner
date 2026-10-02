@@ -1,0 +1,60 @@
+{
+  "dataset_version": "argus-mimic-iv-demo-sepsis3-v0-blocked",
+  "status": "blocked_upstream_derived_relations_missing",
+  "extraction_date": "2026-10-02",
+  "source": {
+    "name": "MIMIC-IV Clinical Database Demo",
+    "version": "2.2",
+    "source_path": "data/raw/mimic-iv-clinical-database-demo-2.2",
+    "subject_count": 100,
+    "icu_stay_count": 140,
+    "raw_table_rows": {
+      "chartevents": 668862,
+      "labevents": 107727,
+      "microbiologyevents": 2899,
+      "pharmacy": 15306,
+      "prescriptions": 18087,
+      "inputevents": 20404,
+      "outputevents": 9362
+    }
+  },
+  "target": {
+    "definition": "Official MIT-LCP MIMIC-Code Sepsis-3 concept: suspected infection with full six-component SOFA score >= 2 in the concept's infection assessment window.",
+    "event_time": "suspected_infection_time from the official sepsis3 derived relation",
+    "prediction_horizon_hours": 6,
+    "observation_window_hours": 4,
+    "upstream_relations_required": [
+      "mimiciv_derived.suspicion_of_infection",
+      "mimiciv_derived.sofa",
+      "mimiciv_derived.sepsis3"
+    ]
+  },
+  "features": {
+    "feature_version": "argus-canonical-31-v1",
+    "feature_count": 31,
+    "implementation": "src/pipeline/canonical_features.py"
+  },
+  "partition": {
+    "method": "patient-level disjoint train/validation/test split",
+    "seed": 42,
+    "train_patient_count": null,
+    "validation_patient_count": null,
+    "test_patient_count": null,
+    "patient_overlap_check": "not_run_no_cohort",
+    "stay_overlap_check": "not_run_no_cohort",
+    "duplicate_window_check": "not_run_no_cohort",
+    "temporal_leakage_check": "not_run_no_cohort"
+  },
+  "labels": {
+    "positive_count": null,
+    "negative_count": null,
+    "status": "not_generated_no_official_derived_relations"
+  },
+  "cohort_file": null,
+  "clinical_evaluation_performed": false,
+  "notes": [
+    "Raw MIMIC-IV Demo table row counts were measured locally; no Sepsis-3 labels or evaluation rows were manufactured.",
+    "The existing Spark extraction is fail-closed and reads only the upstream official derived Sepsis-3 relation.",
+    "The demo contains 100 subjects and is intended for feasibility assessment, not evidence of generalizable clinical performance."
+  ]
+}

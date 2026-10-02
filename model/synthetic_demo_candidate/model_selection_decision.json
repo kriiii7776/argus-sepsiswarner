@@ -1,0 +1,75 @@
+{
+  "primary_model": "Logistic Regression",
+  "alert_threshold": 0.35,
+  "selection_criteria": [
+    "1. AUPRC (primary \u2014 most informative for imbalanced tasks)",
+    "2. Brier Score (calibration quality, lower is better)",
+    "3. Sensitivity (missed sepsis >> alert fatigue clinically)",
+    "4. Alert Rate (ICU nursing operational burden)"
+  ],
+  "selection_split": "validation only (test excluded from all selection decisions)",
+  "validation_metrics_used_for_selection": {
+    "Logistic Regression": {
+      "AUROC": 0.9988104115620894,
+      "AUPRC": 0.9707112719707385,
+      "Brier": 0.006095504118392104,
+      "Sensitivity": 0.9523809523809523,
+      "Specificity": 0.9932885906040269,
+      "PPV": 0.8333333333333334,
+      "NPV": 0.9983136593591906,
+      "AlertRate": 0.03889789303079417,
+      "FalseAlertPct": 0.006711409395973154,
+      "TP": 60,
+      "FP": 12,
+      "TN": 1776,
+      "FN": 3
+    },
+    "XGBoost": {
+      "AUROC": 0.9971414367387521,
+      "AUPRC": 0.9458873440079215,
+      "Brier": 0.005749279755154521,
+      "Sensitivity": 0.9206349206349206,
+      "Specificity": 0.9949664429530202,
+      "PPV": 0.8656716417910447,
+      "NPV": 0.9971973094170403,
+      "AlertRate": 0.036196650459211235,
+      "FalseAlertPct": 0.0050335570469798654,
+      "TP": 58,
+      "FP": 9,
+      "TN": 1779,
+      "FN": 5
+    }
+  },
+  "test_metrics": {
+    "Logistic Regression": {
+      "AUROC": 0.9979711854711855,
+      "AUPRC": 0.9567660553830881,
+      "Brier": 0.006154627871780199,
+      "Sensitivity": 0.9523809523809523,
+      "Specificity": 0.9926801801801802,
+      "PPV": 0.821917808219178,
+      "NPV": 0.9983012457531144,
+      "AlertRate": 0.03969548667754214,
+      "FalseAlertPct": 0.00731981981981982,
+      "TP": 60,
+      "FP": 13,
+      "TN": 1763,
+      "FN": 3
+    },
+    "XGBoost": {
+      "AUROC": 0.9972114972114972,
+      "AUPRC": 0.9385263853370029,
+      "Brier": 0.007352794565259994,
+      "Sensitivity": 0.8571428571428571,
+      "Specificity": 0.9960585585585585,
+      "PPV": 0.8852459016393442,
+      "NPV": 0.9949381327334084,
+      "AlertRate": 0.03317020119630234,
+      "FalseAlertPct": 0.003941441441441441,
+      "TP": 54,
+      "FP": 7,
+      "TN": 1769,
+      "FN": 9
+    }
+  }
+}

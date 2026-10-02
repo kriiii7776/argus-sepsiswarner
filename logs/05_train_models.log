@@ -116,3 +116,81 @@ LightGBM             0.9977  0.9498        0.857        0.996  0.885  0.995     
 2026-09-29 22:24:37,076 [INFO] [XGBoost with personalized features] AUROC=0.9993  AUPRC=0.9810  Brier=0.0038  Sens=0.968  Spec=0.995  PPV=0.884  NPV=0.999  AlertRate=0.038  FalseAlert%=0.5
 2026-09-29 22:47:19,884 [INFO] Generating synthetic demo dataset (no processed parquet found).
 2026-09-29 22:47:21,240 [INFO]   Generated 13299 rows | 427 positive (3.2%) | 300 patients
+2026-10-02 14:21:12,894 [INFO] =================================================================
+2026-10-02 14:21:12,894 [INFO]   SepsisGuard AI — Model Training and Comparison Pipeline
+2026-10-02 14:21:12,895 [INFO] =================================================================
+2026-10-02 14:21:12,895 [INFO] Generating synthetic demo dataset (no processed parquet found).
+2026-10-02 14:21:14,647 [INFO]   Generated 13299 rows | 427 positive (3.2%) | 300 patients
+2026-10-02 14:21:14,664 [INFO] Feature set: 31 features — ['hr_curr', 'map_curr', 'rr_curr', 'spo2_curr', 'temp_curr', 'hr_mean_4h', 'hr_std_4h', 'hr_min_4h', 'hr_max_4h', 'map_mean_4h', 'map_std_4h', 'map_min_4h', 'rr_mean_4h', 'temp_mean_4h', 'hr_delta_1h', 'hr_delta_4h', 'hr_slope_4h', 'map_delta_1h', 'map_delta_4h', 'map_slope_4h', 'rr_delta_1h', 'temp_delta_1h', 'hr_accel', 'shock_index', 'resp_distress_idx', 'fever_response_idx', 'lactate_missing', 'time_since_lactate', 'qsofa_curr', 'map_time_low_4h', 'icu_hour']
+2026-10-02 14:21:14,685 [INFO] Split — Train: 9609 rows / 210 pts | Val: 1851 rows / 45 pts | Test: 1839 rows / 45 pts
+2026-10-02 14:21:14,686 [INFO]   Prevalence — Train: 3.1% | Val: 3.4% | Test: 3.4%
+2026-10-02 14:21:14,703 [INFO] Scaler fit on 9609.0 TRAIN rows only (Audit 4 passed)
+2026-10-02 14:21:14,704 [INFO] scale_pos_weight = 9308/301 = 30.92  (Audit 5: TRAIN only)
+2026-10-02 14:21:14,704 [INFO] Training Logistic Regression...
+2026-10-02 14:21:19,587 [INFO]   Best C=67.2336  CV AUROC=0.9992
+2026-10-02 14:21:19,603 [INFO] Training XGBoost...
+2026-10-02 14:21:41,045 [INFO]   CV AUROC=0.9945  params={'subsample': 1.0, 'reg_lambda': 1.5, 'reg_alpha': 0, 'min_child_weight': 10, 'max_depth': 3, 'learning_rate': 0.1, 'gamma': 0, 'colsample_bytree': 0.5}
+2026-10-02 14:21:42,350 [INFO]   Best iteration=202  val_score=0.9455
+2026-10-02 14:21:42,366 [INFO] 
+--- Feature Importance ---
+2026-10-02 14:21:42,376 [INFO] [Logistic Regression validation] AUROC=0.9988  AUPRC=0.9707  Brier=0.0061  Sens=0.952  Spec=0.993  PPV=0.833  NPV=0.998  AlertRate=0.039  FalseAlert%=0.7
+2026-10-02 14:21:42,390 [INFO] [XGBoost validation] AUROC=0.9971  AUPRC=0.9459  Brier=0.0057  Sens=0.921  Spec=0.995  PPV=0.866  NPV=0.997  AlertRate=0.036  FalseAlert%=0.5
+2026-10-02 14:21:42,401 [INFO] Primary model selected: Logistic Regression  (composite rank=6.0)
+2026-10-02 14:21:42,402 [INFO] Primary model frozen from validation evidence before test evaluation: Logistic Regression
+2026-10-02 14:21:42,402 [INFO] 
+--- Test Set Evaluation (FINAL) ---
+2026-10-02 14:21:42,410 [INFO] [Logistic Regression] AUROC=0.9980  AUPRC=0.9568  Brier=0.0062  Sens=0.952  Spec=0.993  PPV=0.822  NPV=0.998  AlertRate=0.040  FalseAlert%=0.7
+2026-10-02 14:21:42,428 [INFO] [XGBoost] AUROC=0.9972  AUPRC=0.9385  Brier=0.0074  Sens=0.857  Spec=0.996  PPV=0.885  NPV=0.995  AlertRate=0.033  FalseAlert%=0.4
+2026-10-02 14:21:42,429 [INFO] 
+--- Generating Plots ---
+2026-10-02 14:21:42,451 [INFO] 
+Model Comparison:
+                      AUROC   AUPRC  Sensitivity  Specificity    PPV    NPV  Brier Score                  Calibration  Train Time (s)  CV AUROC  Alert Rate  False Alert %                                     Interpretability              Imbalance
+Model                                                                                                                                                                                                                                                 
+Logistic Regression  0.9980  0.9568        0.952        0.993  0.822  0.998       0.0062  Sigmoid/Platt (val holdout)             4.9    0.9992       0.040            0.7    High  — global coefficients, monotone, GDPR-ready  class_weight=balanced
+XGBoost              0.9972  0.9385        0.857        0.996  0.885  0.995       0.0074  Sigmoid/Platt (val holdout)            22.8    0.9945       0.033            0.4  Medium — SHAP explanations available per prediction  scale_pos_weight=30.9
+2026-10-02 14:21:42,451 [INFO] Comparison table saved: model\synthetic_demo_candidate\model_comparison.csv
+2026-10-02 14:21:42,452 [INFO] 
+=================================================================
+2026-10-02 14:21:42,452 [INFO]   PRIMARY MODEL: Logistic Regression
+2026-10-02 14:21:42,452 [INFO] =================================================================
+2026-10-02 14:22:34,508 [INFO] =================================================================
+2026-10-02 14:22:34,508 [INFO]   SepsisGuard AI — Model Training and Comparison Pipeline
+2026-10-02 14:22:34,509 [INFO] =================================================================
+2026-10-02 14:22:34,509 [INFO] Generating synthetic demo dataset (no processed parquet found).
+2026-10-02 14:22:36,199 [INFO]   Generated 13299 rows | 427 positive (3.2%) | 300 patients
+2026-10-02 14:22:36,211 [INFO] Feature set: 31 features — ['hr_curr', 'map_curr', 'rr_curr', 'spo2_curr', 'temp_curr', 'hr_mean_4h', 'hr_std_4h', 'hr_min_4h', 'hr_max_4h', 'map_mean_4h', 'map_std_4h', 'map_min_4h', 'rr_mean_4h', 'temp_mean_4h', 'hr_delta_1h', 'hr_delta_4h', 'hr_slope_4h', 'map_delta_1h', 'map_delta_4h', 'map_slope_4h', 'rr_delta_1h', 'temp_delta_1h', 'hr_accel', 'shock_index', 'resp_distress_idx', 'fever_response_idx', 'lactate_missing', 'time_since_lactate', 'qsofa_curr', 'map_time_low_4h', 'icu_hour']
+2026-10-02 14:22:36,222 [INFO] Split — Train: 9609 rows / 210 pts | Val: 1851 rows / 45 pts | Test: 1839 rows / 45 pts
+2026-10-02 14:22:36,222 [INFO]   Prevalence — Train: 3.1% | Val: 3.4% | Test: 3.4%
+2026-10-02 14:22:36,232 [INFO] Scaler fit on 9609.0 TRAIN rows only (Audit 4 passed)
+2026-10-02 14:22:36,232 [INFO] scale_pos_weight = 9308/301 = 30.92  (Audit 5: TRAIN only)
+2026-10-02 14:22:36,232 [INFO] Training Logistic Regression...
+2026-10-02 14:22:41,016 [INFO]   Best C=67.2336  CV AUROC=0.9992
+2026-10-02 14:22:41,024 [INFO] Training XGBoost...
+2026-10-02 14:23:00,297 [INFO]   CV AUROC=0.9945  params={'subsample': 1.0, 'reg_lambda': 1.5, 'reg_alpha': 0, 'min_child_weight': 10, 'max_depth': 3, 'learning_rate': 0.1, 'gamma': 0, 'colsample_bytree': 0.5}
+2026-10-02 14:23:01,475 [INFO]   Best iteration=202  val_score=0.9455
+2026-10-02 14:23:01,493 [INFO] 
+--- Feature Importance ---
+2026-10-02 14:23:01,514 [INFO] [Logistic Regression validation] AUROC=0.9988  AUPRC=0.9707  Brier=0.0061  Sens=0.952  Spec=0.993  PPV=0.833  NPV=0.998  AlertRate=0.039  FalseAlert%=0.7
+2026-10-02 14:23:01,529 [INFO] [XGBoost validation] AUROC=0.9971  AUPRC=0.9459  Brier=0.0057  Sens=0.921  Spec=0.995  PPV=0.866  NPV=0.997  AlertRate=0.036  FalseAlert%=0.5
+2026-10-02 14:23:01,541 [INFO] Primary model selected: Logistic Regression  (composite rank=6.0)
+2026-10-02 14:23:01,541 [INFO] Primary model frozen from validation evidence before test evaluation: Logistic Regression
+2026-10-02 14:23:01,542 [INFO] 
+--- Test Set Evaluation (FINAL) ---
+2026-10-02 14:23:01,551 [INFO] [Logistic Regression] AUROC=0.9980  AUPRC=0.9568  Brier=0.0062  Sens=0.952  Spec=0.993  PPV=0.822  NPV=0.998  AlertRate=0.040  FalseAlert%=0.7
+2026-10-02 14:23:01,565 [INFO] [XGBoost] AUROC=0.9972  AUPRC=0.9385  Brier=0.0074  Sens=0.857  Spec=0.996  PPV=0.885  NPV=0.995  AlertRate=0.033  FalseAlert%=0.4
+2026-10-02 14:23:01,566 [INFO] 
+--- Generating Plots ---
+2026-10-02 14:23:01,591 [INFO] 
+Model Comparison:
+                      AUROC   AUPRC  Sensitivity  Specificity    PPV    NPV  Brier Score                  Calibration  Train Time (s)  CV AUROC  Alert Rate  False Alert %                                     Interpretability              Imbalance
+Model                                                                                                                                                                                                                                                 
+Logistic Regression  0.9980  0.9568        0.952        0.993  0.822  0.998       0.0062  Sigmoid/Platt (val holdout)             4.8    0.9992       0.040            0.7    High  — global coefficients, monotone, GDPR-ready  class_weight=balanced
+XGBoost              0.9972  0.9385        0.857        0.996  0.885  0.995       0.0074  Sigmoid/Platt (val holdout)            20.5    0.9945       0.033            0.4  Medium — SHAP explanations available per prediction  scale_pos_weight=30.9
+2026-10-02 14:23:01,591 [INFO] Comparison table saved: model\synthetic_demo_candidate\model_comparison.csv
+2026-10-02 14:23:01,591 [INFO] 
+=================================================================
+2026-10-02 14:23:01,591 [INFO]   PRIMARY MODEL: Logistic Regression
+2026-10-02 14:23:01,591 [INFO] =================================================================
+2026-10-02 14:23:01,617 [INFO] Decision record saved: model\synthetic_demo_candidate\model_selection_decision.json
+2026-10-02 14:23:01,617 [INFO] Pipeline complete.
